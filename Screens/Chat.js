@@ -160,6 +160,17 @@ export default function Chat(props) {
     props.navigation.navigate("Call", {
       channelName: String(iddiscussion),
       isVideo: true,
+      currentid,
+      contactId: secondid,
+    });
+  };
+
+  const openAudioCall = () => {
+    props.navigation.navigate("Call", {
+      channelName: String(iddiscussion),
+      isVideo: false,
+      currentid,
+      contactId: secondid,
     });
   };
 

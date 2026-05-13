@@ -126,49 +126,128 @@ export default function MyAccount(props) {
     }
   };
 
+  const deleteAccount = async () => {
+    if (!ref) {
+      Alert.alert("Erreur", "Compte introuvable.");
+      return;
+    }
+
+    try {
+      await ref.remove();
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        await currentUser.delete();
+      }
+      await AsyncStorage.multiRemove(["userid", "userId"]);
+      Alert.alert("Compte supprimé", "Votre compte a été supprimé.");
+      props.navigation.replace("Auth");
+    } catch (err) {
+      console.log("Erreur lors de la suppression du compte:", err);
+      Alert.alert(
+        "Erreur",
+        err?.code === "auth/requires-recent-login"
+          ? "Veuillez vous reconnecter puis réessayer de supprimer le compte."
+          : err?.message || "Impossible de supprimer le compte."
+      );
+    }
+  };
+
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
       <ModernBackground source={require("../../assets/backgr.jpg")} style={styles.bg}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} scrollEnabled={true}>
-          <View style={[styles.profileCard, isDark && styles.profileCardDark]}>
-            <View style={styles.avatarWrap}>
-              <View style={styles.avatarShell}>
-                <Image
-                  source={(previewImage || (UrlImage && !imageLoadError)) ? { uri: previewImage || UrlImage } : require("../../assets/profil.png")}
-                  onError={() => setImageLoadError(true)}
-                  style={styles.avatar}
-                />
+          <View style={[styles.pageHero, isDark && styles.pageHeroDark]}>
+            <View style={styles.pageHeroGlowA} />
+            <View style={styles.pageHeroGlowB} />
+
+            <View style={styles.pageHeader}>
+              <View style={{ flex: 1 }}>
+                <View style={styles.pageEyebrowRow}>
+                  <Ionicons name="person-circle-outline" size={16} color={theme.colors.primary} />
+                  <Text style={styles.pageEyebrow}>{t("profile")}</Text>
+                </View>
+                <Text style={styles.pageTitle}>{Nom || t("profile")}</Text>
+                <Text style={styles.pageSubtitle}>{Pseudo ? `@${Pseudo}` : Email || ""}</Text>
               </View>
-              <TouchableOpacity onPress={pickImage} style={styles.cameraBtn}>
-                <Ionicons name="camera" size={16} color={theme.colors.primary} />
+              <TouchableOpacity
+                onPress={() => setShowEdit(!showEdit)}
+                style={[styles.headerAction, showEdit && styles.headerActionActive]}
+              >
+                <Ionicons name="pencil" size={16} color="#fff" />
               </TouchableOpacity>
             </View>
 
-            <Text style={[styles.name, isDark && styles.textOnDark]}>{Nom || t("profile")}</Text>
-            <Text style={[styles.sub, isDark && styles.subOnDark]}>{Pseudo ? `@${Pseudo}` : ""}</Text>
-            <Text style={[styles.bio, isDark && styles.subOnDark]}></Text>
+            <View style={styles.pageMetaRow}>
+              <View style={styles.metaPill}>
+                <Ionicons name="sparkles-outline" size={14} color={theme.colors.primary} />
+                
+              </View>
+              <View style={styles.metaPillSoft}>
+                <Text style={styles.metaPillTextSoft}>{showEdit ? "Editing" : "Overview"}</Text>
+              </View>
+            </View>
+          </View>
 
-            <TouchableOpacity style={styles.editBtn} onPress={() => setShowEdit(!showEdit)}>
-              <Ionicons name="pencil" size={16} color="#fff" />
-              <Text style={styles.editBtnText}>{t("editProfile")}</Text>
+          <View style={[styles.profileCard, isDark && styles.profileCardDark]}>
+            <View style={styles.heroTopRow}>
+              <View style={styles.avatarWrap}>
+                <View style={styles.avatarShell}>
+                  <Image
+                    source={(previewImage || (UrlImage && !imageLoadError)) ? { uri: previewImage || UrlImage } : require("../../assets/profil.png")}
+                    onError={() => setImageLoadError(true)}
+                    style={styles.avatar}
+                  />
+                </View>
+                <TouchableOpacity onPress={pickImage} style={styles.cameraBtn}>
+                  <Ionicons name="camera" size={16} color="#537978" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.heroInfo}>
+                <Text style={[styles.name, isDark && styles.textOnDark]} numberOfLines={1}>{Nom || t("profile")}</Text>
+                <Text style={[styles.sub, isDark && styles.subOnDark]} numberOfLines={1}>{Pseudo ? `@${Pseudo}` : ""}</Text>
+                <View style={styles.badgeRow}>
+                  <View style={styles.infoBadge}>
+                    <Ionicons name="mail-outline" size={14} color={theme.colors.primary} />
+                    <Text style={styles.infoBadgeText} numberOfLines={1}>{Email || "—"}</Text>
+                  </View>
+                  <View style={styles.infoBadge}>
+                    <Ionicons name="call-outline" size={14} color={theme.colors.primary} />
+                    <Text style={styles.infoBadgeText} numberOfLines={1}>{Numero || "—"}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.primaryChip} onPress={() => setShowEdit(!showEdit)}>
+              <Ionicons name={showEdit ? "checkmark-circle" : "create-outline"} size={16} color="#fff" />
+              <Text style={styles.primaryChipText}>{showEdit ? t("save") : t("editProfile")}</Text>
             </TouchableOpacity>
 
             {showEdit && (
               <View style={styles.editSection}>
-                <Text style={styles.label}>Nom</Text>
-                <TextInput value={Nom} onChangeText={setNom} editable={true} style={styles.input} />
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Nom</Text>
+                  <TextInput value={Nom} onChangeText={setNom} editable={true} style={styles.input} placeholder="Nom" placeholderTextColor={theme.colors.subtext} />
+                </View>
 
-                <Text style={styles.label}>Pseudo</Text>
-                <TextInput value={Pseudo} onChangeText={setPseudo} editable={true} style={styles.input} />
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Pseudo</Text>
+                  <TextInput value={Pseudo} onChangeText={setPseudo} editable={true} style={styles.input} placeholder="Pseudo" placeholderTextColor={theme.colors.subtext} />
+                </View>
 
-                <Text style={styles.label}>Email</Text>
-                <TextInput value={Email} editable={false} style={[styles.input, styles.inputReadonly]} />
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Email</Text>
+                  <TextInput value={Email} editable={false} style={[styles.input, styles.inputReadonly]} />
+                </View>
 
-                <Text style={styles.label}>Numero</Text>
-                <TextInput value={Numero} onChangeText={setNumero} editable={true} style={styles.input} />
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Numero</Text>
+                  <TextInput value={Numero} onChangeText={setNumero} editable={true} style={styles.input} placeholder="Numero" placeholderTextColor={theme.colors.subtext} />
+                </View>
 
-                <View style={{ marginTop: 12 }}>
+                <View style={{ marginTop: 14 }}>
                   <PrimaryButton onPress={saveAccount}>{t("save")}</PrimaryButton>
                 </View>
               </View>
@@ -180,7 +259,10 @@ export default function MyAccount(props) {
               <View style={styles.settingsIcon}>
                 <Ionicons name="notifications" size={18} color={theme.colors.primary} />
               </View>
-              <Text style={[styles.settingsText, isDark && styles.textOnDark]}>{t("notifications")}</Text>
+              <View style={styles.settingsRowBody}>
+                <Text style={[styles.settingsText, isDark && styles.textOnDark]}>{t("notifications")}</Text>
+                <Text style={[styles.settingsHint, isDark && styles.subOnDark]}>Alertes et messages</Text>
+              </View>
               <Switch
                 value={notificationsEnabled}
                 onValueChange={(value) => {
@@ -198,14 +280,20 @@ export default function MyAccount(props) {
               <View style={styles.settingsIcon}>
                 <Ionicons name="color-palette" size={18} color={theme.colors.primary} />
               </View>
-              <Text style={[styles.settingsText, isDark && styles.textOnDark]}>{t("appearance")}</Text>
+              <View style={styles.settingsRowBody}>
+                <Text style={[styles.settingsText, isDark && styles.textOnDark]}>{t("appearance")}</Text>
+                <Text style={[styles.settingsHint, isDark && styles.subOnDark]}>Thème, langue, apparence</Text>
+              </View>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.subtext} />
             </TouchableOpacity>
             <View style={[styles.settingsRow, { borderBottomWidth: 0 }, isDark && styles.settingsRowDark]}>
               <View style={styles.settingsIcon}>
                 <Ionicons name="moon" size={18} color={theme.colors.primary} />
               </View>
-              <Text style={[styles.settingsText, isDark && styles.textOnDark]}>{t("darkMode")}</Text>
+              <View style={styles.settingsRowBody}>
+                <Text style={[styles.settingsText, isDark && styles.textOnDark]}>{t("darkMode")}</Text>
+                <Text style={[styles.settingsHint, isDark && styles.subOnDark]}>Mode sombre</Text>
+              </View>
               <Switch
                 value={themeMode === "Dark"}
                 onValueChange={(value) => {
@@ -216,13 +304,32 @@ export default function MyAccount(props) {
             </View>
           </View>
 
-          <TouchableOpacity
-            onPress={() => { auth.signOut().then(() => props.navigation.replace("Auth")); }}
-            style={styles.logout}
-          >
-            <Ionicons name="log-out" size={18} color="#e14b4b" />
-            <Text style={styles.logoutText}>{t("logout")}</Text>
-          </TouchableOpacity>
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              onPress={() => { auth.signOut().then(() => props.navigation.replace("Auth")); }}
+              style={styles.logout}
+            >
+              <Ionicons name="log-out" size={18} color="#e14b4b" />
+              <Text style={styles.logoutText}>{t("logout")}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert(
+                  "Delete Account",
+                  "This action will permanently delete your account and profile data.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Delete", style: "destructive", onPress: deleteAccount },
+                  ]
+                );
+              }}
+              style={styles.deleteAccount}
+            >
+              <Ionicons name="trash-outline" size={18} color="#fff" />
+              <Text style={styles.deleteAccountText}>{t("deleteAccount")}</Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
 
         <Modal
@@ -301,32 +408,151 @@ const getStyles = (theme) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.colors.background },
   bg: { flex: 1 },
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingBottom: 140,
-    paddingTop: 80,
+    paddingTop: 72,
     flexGrow: 1,
     justifyContent: "flex-start",
   },
+  pageHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 12,
+    zIndex: 1,
+  },
+  pageHero: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 30,
+    padding: 18,
+    marginBottom: 16,
+    backgroundColor: "rgba(255,255,255,0.55)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.5)",
+    ...theme.elevation.mid,
+  },
+  pageHeroDark: {
+    backgroundColor: "rgba(15,30,31,0.72)",
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  pageHeroGlowA: {
+    position: "absolute",
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(83,121,120,0.14)",
+    right: -48,
+    top: -42,
+  },
+  pageHeroGlowB: {
+    position: "absolute",
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    left: -18,
+    bottom: -26,
+  },
+  pageEyebrowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
+  pageEyebrow: {
+    color: theme.colors.subtext,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  pageTitle: {
+    color: theme.colors.text,
+    fontSize: 28,
+    fontWeight: "900",
+    lineHeight: 32,
+  },
+  pageSubtitle: {
+    color: theme.colors.subtext,
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  pageMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 14,
+    zIndex: 1,
+  },
+  metaPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.65)",
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  metaPillSoft: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.28)",
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  metaPillText: {
+    color: theme.colors.text,
+    fontWeight: "800",
+    fontSize: 12,
+  },
+  metaPillTextSoft: {
+    color: theme.colors.text,
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  headerAction: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    ...theme.elevation.low,
+  },
+  headerActionActive: {
+    transform: [{ scale: 0.98 }],
+  },
   profileCard: {
     backgroundColor: theme.colors.glass,
-    borderRadius: 28,
-    padding: 20,
-    alignItems: "center",
+    borderRadius: 30,
+    padding: 18,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.52)",
+    borderColor: "rgba(66, 121, 97, 0.52)",
     marginBottom: 24,
     ...theme.elevation.mid,
   },
+  heroTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
   avatarWrap: { alignItems: "center" },
   avatarShell: {
-    width: 98,
-    height: 98,
-    borderRadius: 32,
+    width: 100,
+    height: 100,
+    borderRadius: 34,
     backgroundColor: theme.colors.secondary,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatar: { width: 88, height: 88, borderRadius: 22 },
+  avatar: { width: 90, height: 90, borderRadius: 26 },
   cameraBtn: {
     position: "absolute",
     right: -6,
@@ -334,34 +560,74 @@ const getStyles = (theme) => StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: "transparent",
+    backgroundColor: theme.colors.primary,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  heroInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  name: { fontSize: 22, fontWeight: "900", color: theme.colors.text },
+  sub: { color: theme.colors.subtext, marginTop: 4, fontWeight: "600" },
+  bio: { marginTop: 8, color: theme.colors.subtext, textAlign: "center" },
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 14,
+  },
+  infoBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.62)",
     borderWidth: 1,
     borderColor: theme.colors.border,
+    maxWidth: "100%",
   },
-  name: { fontSize: 20, fontWeight: "800", color: theme.colors.text, marginTop: 12 },
-  sub: { color: theme.colors.subtext, marginTop: 2 },
-  bio: { marginTop: 8, color: theme.colors.subtext, textAlign: "center" },
-  editBtn: {
-    marginTop: 14,
+  infoBadgeText: {
+    color: theme.colors.text,
+    fontWeight: "700",
+    fontSize: 12,
+    flexShrink: 1,
+  },
+  primaryChip: {
+    marginTop: 16,
     backgroundColor: theme.colors.primary,
     paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingVertical: 12,
+    borderRadius: 18,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    alignSelf: "flex-start",
   },
-  editBtnText: { color: "#fff", fontWeight: "700" },
-  editSection: { width: "100%", marginTop: 16 },
+  primaryChipText: { color: "#fff", fontWeight: "800" },
+  editSection: { width: "100%", marginTop: 18 },
+  fieldGroup: {
+    marginBottom: 8,
+  },
   label: { marginTop: 12, color: theme.colors.subtext, fontWeight: "700" },
-  input: { backgroundColor: "transparent", padding: 14, borderRadius: 14, marginTop: 6, borderWidth: 1, borderColor: theme.colors.border },
+  input: {
+    backgroundColor: "rgba(255,255,255,0.5)",
+    padding: 14,
+    borderRadius: 16,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    color: theme.colors.text,
+  },
   inputReadonly: { color: theme.colors.subtext },
   settingsCard: {
-    marginTop: 48,
+    marginTop: 8,
     backgroundColor: theme.colors.glass,
-    borderRadius: 24,
+    borderRadius: 26,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.52)",
     overflow: "hidden",
@@ -377,6 +643,10 @@ const getStyles = (theme) => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
+  settingsRowBody: {
+    flex: 1,
+    minWidth: 0,
+  },
   settingsIcon: {
     width: 36,
     height: 36,
@@ -386,8 +656,18 @@ const getStyles = (theme) => StyleSheet.create({
     justifyContent: "center",
   },
   settingsText: { flex: 1, fontWeight: "700", color: theme.colors.text },
+  settingsHint: {
+    marginTop: 2,
+    fontSize: 12,
+    color: theme.colors.subtext,
+    fontWeight: "500",
+  },
+  actionRow: {
+    marginTop: 24,
+    gap: 12,
+  },
   logout: {
-    marginTop: 48,
+    marginTop: 0,
     paddingVertical: 14,
     borderRadius: 20,
     backgroundColor: theme.colors.surface,
@@ -399,6 +679,19 @@ const getStyles = (theme) => StyleSheet.create({
     gap: 8,
   },
   logoutText: { color: "#e14b4b", fontWeight: "700" },
+  deleteAccount: {
+    marginTop: 14,
+    paddingVertical: 14,
+    borderRadius: 20,
+    backgroundColor: "#e14b4b",
+    borderWidth: 1,
+    borderColor: "#e14b4b",
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+  },
+  deleteAccountText: { color: "#fff", fontWeight: "800" },
   profileCardDark: {
     backgroundColor: "rgba(15,30,31,0.65)",
     borderColor: "rgba(255,255,255,0.15)",

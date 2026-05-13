@@ -2,6 +2,7 @@ import React from "react";
 import MyAccount from "./Home/MyAccount";
 import Groupe from "./Home/Groupe";
 import ListAccount from "./Home/ListAccount";
+import Calls from "./Home/Calls";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -51,6 +52,15 @@ export default function Home(props) {
         options={{
           tabBarLabel: t("groups"),
           tabBarIcon: ({ focused }) => renderIcon(focused, "people", "people-outline"),
+        }}
+        initialParams={{ userid }}
+      />
+      <Tab.Screen
+        name="Calls"
+        component={Calls}
+        options={{
+          tabBarLabel: t("calls"),
+          tabBarIcon: ({ focused }) => renderIcon(focused, "call", "call-outline"),
         }}
         initialParams={{ userid }}
       />

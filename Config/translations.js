@@ -31,7 +31,9 @@ export const translations = {
     searchGroups: "Search groups...",
     addMembers: "Add members",
     newGroup: "New group",
-    createGroup: "Create group"
+    createGroup: "Create group",
+    deleteAccount: "DELETE Account",
+    calls: "Calls"
   },
   Francais: {
     appName: "WhatsUp",
@@ -65,7 +67,9 @@ export const translations = {
     searchGroups: "Search groups...",
     addMembers: "Ajouter des membres",
     newGroup: "Nouveau groupe",
-    createGroup: "Creer le groupe"
+    createGroup: "Creer le groupe",
+    deleteAccount: "SUPPRIMER LE COMPTE",
+    calls: "Appels"
   },
   Arabic: {
     appName: "WhatsUp",
@@ -99,7 +103,9 @@ export const translations = {
     searchGroups: "ابحث عن مجموعات...",
     addMembers: "اضافة اعضـاء",
     newGroup: "مجموعة جديدة",
-    createGroup: "انشاء مجموعة"
+    createGroup: "انشاء مجموعة",
+    deleteAccount: "حذف الحساب",
+    calls: "المكالمات"
   },
   Espanol: {
     appName: "WhatsUp",
@@ -133,6 +139,8 @@ export const translations = {
     searchGroups: "Buscar grupos...",
     addMembers: "Agregar miembros",
     newGroup: "Nuevo grupo",
-    createGroup: "Crear grupo"
+    createGroup: "Crear grupo",
+    deleteAccount: "ELIMINAR CUENTA",
+    calls: "Llamadas"
   }
 };

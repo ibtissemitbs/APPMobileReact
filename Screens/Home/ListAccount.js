@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -58,6 +59,10 @@ export default function ListAccount(props) {
     });
     return initial;
   });
+  const [selectAllMode, setselectAllMode] = useState(false);
+  const [readAllMode, setreadAllMode] = useState(false);
+  const [calls, setcalls] = useState([]);
+  const [selectedChats, setselectedChats] = useState({});
 
   const storageKey = "favorite_contacts_" + userid;
   const addedKey = "added_contacts_" + userid;
@@ -76,6 +81,21 @@ export default function ListAccount(props) {
     } else {
       props.navigation.navigate("Chat", params);
     }
+  }
+
+  function getContactInitial(item) {
+    const sourceName = item?.Nom || item?.Pseudo || item?.Email || item?.Numero || "?";
+    return sourceName.trim().charAt(0).toUpperCase();
+  }
+
+  function getContactNudeColor(item) {
+    const palette = ["#C7DBC2", "#99B8A9"];
+    const seed = `${item?.Id ?? ""}${item?.Nom ?? ""}${item?.Pseudo ?? ""}`;
+    let hash = 0;
+    for (let index = 0; index < seed.length; index += 1) {
+      hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+    }
+    return palette[hash % palette.length];
   }
 
   function toggleGroupUser(userId) {
@@ -377,6 +397,100 @@ export default function ListAccount(props) {
     return () => ref_all_messages.off("value", onMessages);
   }, [userid]);
 
+  const handleSelectAll = () => {
+    if (selectAllMode) {
+      setselectAllMode(false);
+      setselectedChats({});
+    } else {
+      setselectAllMode(true);
+    }
+  };
+
+  const handleReadAll = () => {
+    if (!readAllMode) {
+      setreadAllMode(true);
+      // Mark all chats as read (optional: implement marking logic)
+    } else {
+      setreadAllMode(false);
+    }
+  };
+
+  const toggleChatSelection = (contactId) => {
+    const key = String(contactId);
+    setselectedChats((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const handleArchiveChats = () => {
+    const selected = Object.keys(selectedChats).filter((id) => selectedChats[id]);
+    if (selected.length === 0) return;
+    Alert.alert("Archive", `Archive ${selected.length} chat(s)?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Archive",
+        onPress: () => {
+          selected.forEach((id) => {
+            // Implement archive logic in Firebase
+            console.log("Archiving chat:", id);
+          });
+          setselectedChats({});
+          Alert.alert("Success", "Chats archived");
+        },
+      },
+    ]);
+  };
+
+  const handleReadChats = () => {
+    const selected = Object.keys(selectedChats).filter((id) => selectedChats[id]);
+    if (selected.length === 0) return;
+    selected.forEach((id) => {
+      // Mark as read in Firebase
+      console.log("Marking as read:", id);
+    });
+    setselectedChats({});
+    Alert.alert("Success", "Chats marked as read");
+  };
+
+  const handleDeleteChats = () => {
+    const selected = Object.keys(selectedChats).filter((id) => selectedChats[id]);
+    if (selected.length === 0) return;
+    Alert.alert(
+      "Delete chats",
+      `Delete ${selected.length} chat(s)? This action cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await Promise.all(
+                selected.map((id) => database.ref(`allMessages/${id}`).remove())
+              );
+
+              const selectedSet = new Set(selected.map((id) => String(id)));
+              const nextAddedIds = addedIds.filter(
+                (id) => !selectedSet.has(String(id))
+              );
+              await saveAdded(nextAddedIds);
+
+              setselectedChats({});
+              setchatUserIds((prev) =>
+                prev.filter((id) => !selectedSet.has(String(id)))
+              );
+              Alert.alert("Success", "Chats deleted");
+            } catch (err) {
+              console.error("Error deleting chats:", err);
+              Alert.alert("Erreur", "Impossible de supprimer les chats");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const visibleIds = new Set([...chatUserIds, ...addedIds]);
   const data_discussions = createGroupMode
     ? data.filter((item) => String(item.Id) !== String(userid))
@@ -416,31 +530,55 @@ export default function ListAccount(props) {
       <View style={styles.header}>
         <Text style={styles.welcome}>Welcome back</Text>
         <View style={styles.headerRow}>
-          <Text style={styles.logo}>Messages</Text>
-          <View style={styles.headerPill}>
-            <Text style={styles.headerPillText}>{data_sorted.length} chats</Text>
+          {selectAllMode ? (
+            <Text style={styles.logo}>
+              {Object.values(selectedChats).filter(Boolean).length} selected
+            </Text>
+          ) : (
+            <>
+              <Text style={styles.logo}>Chats</Text>
+              <View style={styles.headerPill}>
+                <Text style={styles.headerPillText}>{data_sorted.length}</Text>
+              </View>
+            </>
+          )}
+
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              onPress={() => props.navigation.navigate("Groupe", { userid })}
+              style={styles.headerIcon}
+            >
+              <Ionicons name="people-outline" size={18} color={theme.colors.text} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => props.navigation.navigate("MyAccount", { userid })}
+              style={styles.headerIcon}
+            >
+              <Ionicons name="person-outline" size={18} color={theme.colors.text} />
+            </TouchableOpacity>
           </View>
         </View>
       </View>
 
-      <View style={{ flexDirection: "row", marginBottom: 6 }}>
+      <View style={styles.chatActionsRow}>
         <TouchableOpacity
-          onPress={() => {
-            props.navigation.navigate("Groupe", { userid: userid });
-          }}
-          style={styles.navButton}
+          onPress={handleSelectAll}
+          style={[styles.chatActionBtn, selectAllMode && styles.chatActionBtnActive]}
         >
-          <Text style={styles.buttonText}>Groupes</Text>
+          <Ionicons name={selectAllMode ? "checkmark-done-circle" : "ellipsis-vertical"} size={16} color={selectAllMode ? "#fff" : theme.colors.text} />
+          <Text style={[styles.chatActionBtnText, selectAllMode && { color: "#fff" }]}>Select chats</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => {
-            props.navigation.navigate("MyAccount", { userid: userid });
-          }}
-          style={styles.navButton2}
+          onPress={handleReadAll}
+          style={[styles.chatActionBtn, readAllMode && styles.chatActionBtnActive]}
         >
-          <Text style={styles.buttonText}>Profil</Text>
+          <Ionicons name={readAllMode ? "checkmark-all" : "mail"} size={16} color={readAllMode ? "#fff" : theme.colors.text} />
+          <Text style={[styles.chatActionBtnText, readAllMode && { color: "#fff" }]}>Read all</Text>
         </TouchableOpacity>
       </View>
+
+      
 
       <View style={styles.searchWrap}>
         <Text style={styles.searchIcon}>🔍</Text>
@@ -488,15 +626,19 @@ export default function ListAccount(props) {
         {data_sorted.slice(0, 6).map((item) => (
           <TouchableOpacity key={item.Id} style={styles.storyItem}>
             <View style={styles.storyRing}>
-              <Image
-                style={styles.storyAvatar}
-                source={item.UrlImage && !brokenImages[item.Id]
-                  ? { uri: item.UrlImage }
-                  : require("../../assets/prof.png")}
-                onError={() => {
-                  setBrokenImages((prev) => ({ ...prev, [item.Id]: true }));
-                }}
-              />
+              {item.UrlImage && !brokenImages[item.Id] ? (
+                <Image
+                  style={styles.storyAvatar}
+                  source={{ uri: item.UrlImage }}
+                  onError={() => {
+                    setBrokenImages((prev) => ({ ...prev, [item.Id]: true }));
+                  }}
+                />
+              ) : (
+                <View style={[styles.storyAvatar, styles.storyAvatarPlaceholder, { backgroundColor: getContactNudeColor(item) }]}>
+                  <Text style={styles.storyAvatarText}>{getContactInitial(item)}</Text>
+                </View>
+              )}
             </View>
             <Text style={styles.storyLabel} numberOfLines={1}>{(item.Nom || item.Pseudo || "").split(" ")[0]}</Text>
           </TouchableOpacity>
@@ -508,10 +650,15 @@ export default function ListAccount(props) {
         renderItem={({ item }) => {
           const isFav = favoriteIds.includes(item.Id);
           const isSelected = !!selectedUsers[String(item.Id)];
+          const isChatSelected = !!selectedChats[String(item.Id)];
           return (
             <View style={styles.contact}>
               <TouchableOpacity
                 onPress={() => {
+                  if (selectAllMode) {
+                    toggleChatSelection(item.Id);
+                    return;
+                  }
                   if (createGroupMode) {
                     toggleGroupUser(item.Id);
                     return;
@@ -521,44 +668,56 @@ export default function ListAccount(props) {
                 }}
               >
               <View style={[styles.avatarFrame, (item.Online || item.online || item.isOnline) ? styles.avatarFrameOnline : styles.avatarFrameOffline]}>
-                <Image
-                  style={styles.avatar}
-                  source={item.UrlImage && !brokenImages[item.Id]
-                    ? { uri: item.UrlImage } 
-                    : require("../../assets/prof.png")}
-                  onError={() => {
-                    setBrokenImages((prev) => ({ ...prev, [item.Id]: true }));
-                  }}
-                />
+                {item.UrlImage && !brokenImages[item.Id] ? (
+                  <Image
+                    style={styles.avatar}
+                    source={{ uri: item.UrlImage }}
+                    onError={() => {
+                      setBrokenImages((prev) => ({ ...prev, [item.Id]: true }));
+                    }}
+                  />
+                ) : (
+                  <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: getContactNudeColor(item) }]}>
+                    <Text style={styles.avatarText}>{getContactInitial(item)}</Text>
+                  </View>
+                )}
                 <View style={[styles.presenceDot, (item.Online || item.online || item.isOnline) ? styles.presenceOnline : styles.presenceOffline]} />
               </View>
-              {createGroupMode && (
+              {selectAllMode ? (
+                <View style={[styles.selectionBadge, isChatSelected && styles.selectionBadgeActive]}>
+                  <Text style={styles.selectionBadgeText}>{isChatSelected ? "✓" : ""}</Text>
+                </View>
+              ) : createGroupMode ? (
                 <View style={[styles.selectionBadge, isSelected && styles.selectionBadgeActive]}>
                   <Text style={styles.selectionBadgeText}>{isSelected ? "✓" : ""}</Text>
                 </View>
-              )}
+              ) : null}
               </TouchableOpacity>
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.name}> {item.Nom || "Sans nom"} {isFav ? "⭐" : ""}</Text>
                 <Text style={styles.info}> {item.Pseudo} - {item.Numero} </Text>
               </View>
               <View style={{ flexDirection: "row" }}>
-                <TouchableOpacity
-                  onPress={() => {
-                    toggleFavorite(item.Id);
-                  }}
-                  style={[styles.smallButton, { backgroundColor: "transparent" }]}
-                >
-                  <Text style={styles.buttonText}>{isFav ? "Fav" : "+Fav"}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => {
-                    callUser(item);
-                  }}
-                  style={styles.smallButton}
-                >
+                {!selectAllMode && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      toggleFavorite(item.Id);
+                    }}
+                    style={[styles.smallButton, { backgroundColor: "transparent" }]}
+                  >
+                    <Text style={styles.buttonText}>{isFav ? "Fav" : "+Fav"}</Text>
+                  </TouchableOpacity>
+                )}
+                {!selectAllMode && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      callUser(item);
+                    }}
+                    style={styles.smallButton}
+                  >
                   <Text style={styles.buttonText}>Call</Text>
                 </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   onPress={() => {
                     goToChat(item);
@@ -577,6 +736,32 @@ export default function ListAccount(props) {
         style={{ width: "95%", flex: 1 }}
         contentContainerStyle={{ paddingBottom: 160, paddingTop: 4 }}
       ></FlatList>
+
+      {selectAllMode && Object.values(selectedChats).some(Boolean) && (
+        <View style={styles.actionBar}>
+          <TouchableOpacity
+            style={styles.actionBarBtn}
+            onPress={handleArchiveChats}
+          >
+            <Ionicons name="archive-outline" size={16} color={theme.colors.text} />
+            <Text style={styles.actionBarBtnText}>Archive</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionBarBtn}
+            onPress={handleReadChats}
+          >
+            <Ionicons name="mail-outline" size={16} color={theme.colors.text} />
+            <Text style={styles.actionBarBtnText}>Read</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionBarBtn, styles.actionBarBtnDelete]}
+            onPress={handleDeleteChats}
+          >
+            <Ionicons name="trash-outline" size={16} color="#fff" />
+            <Text style={[styles.actionBarBtnText, { color: "#fff" }]}>Delete</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <TouchableOpacity style={styles.fab} onPress={openAddUser}>
         <Text style={styles.fabText}>＋</Text>
@@ -678,6 +863,13 @@ export default function ListAccount(props) {
             </Text>
             <Text style={{ color: theme.colors.subtext }}>{selectedAccount?.Pseudo}</Text>
             <Text style={{ color: theme.colors.subtext }}>{selectedAccount?.Numero}</Text>
+
+            <TouchableOpacity
+              style={styles.profileCloseBtn}
+              onPress={() => setisModalVisible(false)}
+            >
+              <Text style={styles.profileCloseBtnText}>Fermer</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -793,6 +985,69 @@ const getStyles = (theme) => StyleSheet.create({
     fontWeight: "800",
     fontSize: 12,
   },
+  chatActionsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  chatActionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    gap: 6,
+  },
+  chatActionBtnActive: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  chatActionBtnText: {
+    color: theme.colors.text,
+    fontWeight: "600",
+    fontSize: 12,
+  },
+  actionBar: {
+    position: "absolute",
+    bottom: 80,
+    left: 16,
+    right: 16,
+    flexDirection: "row",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  actionBarBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    gap: 6,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  actionBarBtnDelete: {
+    backgroundColor: "#e14b4b",
+    borderColor: "#e14b4b",
+  },
+  actionBarBtnText: {
+    color: theme.colors.text,
+    fontWeight: "600",
+    fontSize: 12,
+  },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -899,6 +1154,16 @@ const getStyles = (theme) => StyleSheet.create({
     height: 52,
     borderRadius: 26,
   },
+  storyAvatarPlaceholder: {
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  storyAvatarText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "800",
+  },
   storyAdd: {
     width: 56,
     height: 56,
@@ -944,6 +1209,16 @@ const getStyles = (theme) => StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: theme.colors.muted,
+  },
+  avatarPlaceholder: {
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "800",
   },
   avatarFrame: {
     width: 62,
@@ -1115,6 +1390,23 @@ const getStyles = (theme) => StyleSheet.create({
     color: theme.colors.text,
     fontSize: 14,
     fontWeight: "700",
+  },
+  profileCloseBtn: {
+    alignSelf: "center",
+    marginTop: 18,
+    minWidth: 120,
+    height: 42,
+    paddingHorizontal: 22,
+    borderRadius: 21,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileCloseBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "800",
+    textAlign: "center",
   },
   fieldBlock: {
     marginBottom: 12,

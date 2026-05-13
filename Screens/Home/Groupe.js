@@ -238,6 +238,10 @@ export default function Groupe(props) {
       (a.Numero && a.Numero.toLowerCase().includes(q))
     );
   });
+  const filteredGroups = groups.filter((item) => {
+    if (!searchQuery.trim()) return true;
+    return (item.nom || "").toLowerCase().includes(searchQuery.toLowerCase());
+  });
   const members = selectedGroup && selectedGroup.members ? Object.keys(selectedGroup.members) : [];
   const usersNotInGroup = otherAccounts.filter((item) => {
     return selectedGroup && selectedGroup.members && !selectedGroup.members[item.Id];
@@ -333,7 +337,7 @@ export default function Groupe(props) {
         </View>
 
         <View style={styles.listWrap}>
-          {groups.map((item, index) => {
+          {filteredGroups.map((item, index) => {
             const membersCount = Object.keys(item.members || {}).length;
             const memberIds = Object.keys(item.members || {}).slice(0, 3);
             return (
@@ -375,6 +379,11 @@ export default function Groupe(props) {
               </TouchableOpacity>
             );
           })}
+          {filteredGroups.length === 0 && (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>Aucun groupe trouvé</Text>
+            </View>
+          )}
         </View>
 
         {selectedGroup && (
@@ -687,6 +696,16 @@ const getStyles = (theme) => StyleSheet.create({
   },
   listWrap: {
     gap: 10,
+  },
+  emptyState: {
+    paddingVertical: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyStateText: {
+    color: theme.colors.subtext,
+    fontSize: 14,
+    fontWeight: "600",
   },
   groupCardNew: {
     backgroundColor: theme.colors.glass,

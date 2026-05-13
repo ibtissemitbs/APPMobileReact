@@ -9,12 +9,16 @@ import {
   VideoSourceType,
 } from "react-native-agora";
 import { AGORA_APP_ID, AGORA_TOKEN, AGORA_TOKEN_SERVER_URL } from "../Config/agora";
+import firebase from "../Config";
 import { useAppSettings } from "../Config/appSettings";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import ModernBackground from "../components/ui/ModernBackground";
 
 export default function Call(props) {
   const channelName = props.route?.params?.channelName;
   const isVideo = props.route?.params?.isVideo ?? true;
+  const currentid = props.route?.params?.currentid ?? props.route?.params?.userId;
+  const contactId = props.route?.params?.contactId ?? props.route?.params?.secondid;
   const { theme } = useAppSettings();
   const styles = getStyles(theme);
   const [joined, setJoined] = useState(false);
@@ -23,7 +27,79 @@ export default function Call(props) {
   const [videoEnabled, setVideoEnabled] = useState(isVideo);
   const [speakerOn, setSpeakerOn] = useState(true);
   const [tokenError, setTokenError] = useState(null);
+  const hasLoggedCallRef = useRef(false);
   const engineRef = useRef(null);
+
+  const logCallToHistory = async () => {
+    if (hasLoggedCallRef.current) return;
+
+    // try to ensure we have a current user id and contact id
+    let resolvedCurrent = currentid;
+    let resolvedContact = contactId;
+
+    if (!resolvedCurrent) {
+      try {
+        const stored = await AsyncStorage.getItem('userid');
+        if (stored) resolvedCurrent = stored;
+      } catch (e) {
+        console.warn('Failed to read userid from AsyncStorage', e);
+      }
+    }
+
+    if (!resolvedContact) {
+      resolvedContact = props.route?.params?.contactId ?? props.route?.params?.secondid ?? null;
+    }
+
+    if (!resolvedCurrent || !resolvedContact) {
+      console.warn('logCallToHistory missing ids', { resolvedCurrent, resolvedContact });
+      return;
+    }
+
+    hasLoggedCallRef.current = true;
+    const timestamp = new Date().toISOString();
+    const callData = {
+      type: isVideo ? 'video' : 'audio',
+      direction: 'outgoing',
+      status: 'completed',
+      timestamp,
+      otherId: resolvedContact,
+      contactId: resolvedContact,
+      duration: 0,
+    };
+
+    const incomingCallData = {
+      ...callData,
+      direction: 'incoming',
+      otherId: resolvedCurrent,
+    };
+
+    console.log('Logging call to history', { resolvedCurrent, resolvedContact, callData });
+
+    try {
+      const outgoingRef = firebase.database().ref(`allCalls/${resolvedCurrent}`).push();
+      const incomingRef = firebase.database().ref(`allCalls/${resolvedContact}`).push();
+
+      await Promise.all([
+        outgoingRef.set(callData),
+        incomingRef.set(incomingCallData),
+      ]);
+      console.log('Call history written for', resolvedCurrent, resolvedContact);
+      try {
+        await AsyncStorage.setItem(
+          `lastLoggedCall_${resolvedCurrent}`,
+          JSON.stringify({ timestamp, otherId: resolvedContact })
+        );
+      } catch (e) {
+        console.warn('Failed to save lastLoggedCall to AsyncStorage', e);
+      }
+    } catch (err) {
+      console.error('Error logging call history:', err);
+    }
+  };
+
+  const finalizeCall = async () => {
+    await logCallToHistory();
+  };
 
   useEffect(() => {
     if (!channelName) return undefined;
@@ -74,14 +150,20 @@ export default function Call(props) {
 
     init();
 
+    const beforeRemove = props.navigation?.addListener?.("beforeRemove", () => {
+      finalizeCall();
+    });
+
     return () => {
       isActive = false;
+      beforeRemove?.remove?.();
       engineRef.current?.leaveChannel();
       engineRef.current?.release();
     };
-  }, [channelName, isVideo]);
+  }, [channelName, isVideo, props.navigation]);
 
-  const endCall = () => {
+  const endCall = async () => {
+    await finalizeCall();
     if (engineRef.current) {
       engineRef.current.leaveChannel();
       engineRef.current.release();
