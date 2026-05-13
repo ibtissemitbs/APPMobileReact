@@ -1,9 +1,11 @@
 import { StatusBar } from "expo-status-bar";
-import { ImageBackground, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import firebase from "../Config";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import PrimaryButton from "../components/ui/PrimaryButton";
 import { useAppSettings } from "../Config/appSettings";
+import ModernBackground from "../components/ui/ModernBackground";
+import { Ionicons } from "@expo/vector-icons";
 
 
 const auth = firebase.auth();
@@ -14,10 +16,13 @@ export default function Auth(props) {
   const styles = getStyles(theme);
 
   return (
-    <ImageBackground source={require("../assets/backgr.jpg")} style={styles.container}>
+    <ModernBackground source={require("../assets/backgr.jpg")} style={styles.container}>
       <View
         style={styles.card}
       >
+        <View style={styles.brandMark}>
+          <Ionicons name="chatbubble-ellipses" size={28} color="#fff" />
+        </View>
         <Text style={styles.title}>
           {t("appName")}
         </Text>
@@ -27,13 +32,13 @@ export default function Auth(props) {
         <TextInput 
         onChangeText={(txt)=>{email=txt;}} 
         keyboardType="email-address"
-        placeholderTextColor={theme.colors.primary}
+        placeholderTextColor={theme.colors.subtext}
         style={styles.Input} placeholder={t("emailPlaceholder")} />
 
         <TextInput 
         onChangeText={(txt)=>{password=txt;}} 
         secureTextEntry={true}
-        placeholderTextColor={theme.colors.primary}
+        placeholderTextColor={theme.colors.subtext}
         style={styles.Input} placeholder={t("passwordPlaceholder")} />
 
         <PrimaryButton style={styles.button} onPress={()=>{
@@ -65,7 +70,7 @@ export default function Auth(props) {
       </View>
 
         <StatusBar style={isDark ? "light" : "dark"} />
-    </ImageBackground>
+    </ModernBackground>
   );
 }
 
@@ -74,51 +79,65 @@ export default function Auth(props) {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 20,
   },
   card: {
-    backgroundColor: "#fffffff5",
-    width: "90%",
-    paddingVertical: 28,
-    paddingHorizontal: 16,
+    backgroundColor: theme.colors.glass,
+    width: "100%",
+    maxWidth: 460,
+    paddingVertical: 30,
+    paddingHorizontal: 20,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 24,
+    borderRadius: 28,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: "rgba(255,255,255,0.54)",
     shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 10,
+  },
+  brandMark: {
+    width: 66,
+    height: 66,
+    borderRadius: 22,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
   },
   title: {
-    fontSize: 36,
+    fontSize: 34,
     fontWeight: "800",
-    color: theme.colors.primary,
+    color: theme.colors.text,
   },
   subtitle: {
     color: theme.colors.subtext,
-    marginBottom: 18,
+    marginBottom: 22,
     fontWeight: "600",
   },
   Input: {
     width: "100%",
     height: 52,
-    backgroundColor: theme.colors.muted,
-    marginBottom: 10,
+    backgroundColor: theme.colors.surface,
+    marginBottom: 12,
     borderRadius: 16,
     paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    color: theme.colors.text,
   },
   button: {
     width: "100%",
-    marginTop: 6,
+    marginTop: 8,
   },
   link: {
-    color: theme.colors.primary,
-    marginTop: 14,
+    color: theme.colors.secondary,
+    marginTop: 18,
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "800",
   },
 });

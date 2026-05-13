@@ -19,6 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import firebase from "../../Config";
 import { useAppSettings } from "../../Config/appSettings";
+import ModernBackground from "../../components/ui/ModernBackground";
 
 const database = firebase.database();
 const ref_all_accounts = database.ref("allaccounts");
@@ -26,6 +27,8 @@ const ref_all_messages = database.ref("allMessages");
 
 export default function ListAccount(props) {
   const userid = props.route?.params?.userid ?? props.route?.params?.userId;
+  const createGroupMode = props.route?.params?.mode === "createGroup";
+  const preselectUsers = props.route?.params?.preselect || [];
   const { theme, t } = useAppSettings();
   const styles = getStyles(theme);
   const [isModalVisible, setisModalVisible] = useState(false);
@@ -47,6 +50,14 @@ export default function ListAccount(props) {
   const [editNom, seteditNom] = useState("");
   const [editPseudo, seteditPseudo] = useState("");
   const [editNumero, seteditNumero] = useState("");
+  const [groupName, setgroupName] = useState("");
+  const [selectedUsers, setselectedUsers] = useState(() => {
+    const initial = {};
+    preselectUsers.forEach((id) => {
+      initial[String(id)] = true;
+    });
+    return initial;
+  });
 
   const storageKey = "favorite_contacts_" + userid;
   const addedKey = "added_contacts_" + userid;
@@ -65,6 +76,57 @@ export default function ListAccount(props) {
     } else {
       props.navigation.navigate("Chat", params);
     }
+  }
+
+  function toggleGroupUser(userId) {
+    const key = String(userId);
+    setselectedUsers((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  }
+
+  async function createGroupFromSelection() {
+    if (!userid) {
+      Alert.alert("Erreur", "Utilisateur introuvable");
+      return;
+    }
+
+    const members = Object.keys(selectedUsers).filter((id) => selectedUsers[id]);
+    if (members.length < 2) {
+      Alert.alert("Erreur", "Sélectionnez au moins 2 utilisateurs");
+      return;
+    }
+
+    if (!groupName.trim()) {
+      Alert.alert("Erreur", "Entrez un nom de groupe");
+      return;
+    }
+
+    const groupId = ref_groups.push().key;
+    const membersMap = { [String(userid)]: true };
+    members.forEach((id) => {
+      membersMap[String(id)] = true;
+    });
+
+    await ref_groups.child(groupId).set({
+      id: groupId,
+      nom: groupName.trim(),
+      admin: userid,
+      members: membersMap,
+      createdAt: new Date().toISOString(),
+    });
+
+    props.navigation.navigate("GroupChat", { groupId, userid });
+  }
+
+  function callUser(item) {
+    const numero = item?.Numero || item?.numero;
+    if (!numero) {
+      Alert.alert("Numero introuvable", "Ce contact n'a pas de numero.");
+      return;
+    }
+    Linking.openURL(`tel:${numero}`);
   }
 
   function deleteContact(contactId) {
@@ -316,7 +378,9 @@ export default function ListAccount(props) {
   }, [userid]);
 
   const visibleIds = new Set([...chatUserIds, ...addedIds]);
-  const data_discussions = data.filter((item) => visibleIds.has(item.Id));
+  const data_discussions = createGroupMode
+    ? data.filter((item) => String(item.Id) !== String(userid))
+    : data.filter((item) => visibleIds.has(item.Id));
 
   const data_filtre = data_discussions.filter((item) => {
     const texte = recherche.toLowerCase();
@@ -345,7 +409,7 @@ export default function ListAccount(props) {
   });
 
   return (
-    <ImageBackground
+    <ModernBackground
       style={styles.container}
       source={require("../../assets/backgr.jpg")}
     >
@@ -353,6 +417,9 @@ export default function ListAccount(props) {
         <Text style={styles.welcome}>Welcome back</Text>
         <View style={styles.headerRow}>
           <Text style={styles.logo}>Messages</Text>
+          <View style={styles.headerPill}>
+            <Text style={styles.headerPillText}>{data_sorted.length} chats</Text>
+          </View>
         </View>
       </View>
 
@@ -378,8 +445,8 @@ export default function ListAccount(props) {
       <View style={styles.searchWrap}>
         <Text style={styles.searchIcon}>🔍</Text>
         <TextInput
-          placeholder="Search chats, people..."
-          placeholderTextColor="#e9f7f7"
+          placeholder={createGroupMode ? "Search users..." : "Search chats, people..."}
+          placeholderTextColor={theme.colors.subtext}
           value={recherche}
           onChangeText={(txt) => {
             setrecherche(txt);
@@ -387,6 +454,25 @@ export default function ListAccount(props) {
           style={styles.search}
         ></TextInput>
       </View>
+
+      {createGroupMode && (
+        <View style={styles.createGroupPanel}>
+          <Text style={styles.createGroupTitle}>Créer un groupe</Text>
+          <TextInput
+            value={groupName}
+            onChangeText={setgroupName}
+            placeholder="Nom du groupe"
+            placeholderTextColor={theme.colors.subtext}
+            style={styles.createGroupInput}
+          />
+          <Text style={styles.createGroupHint}>
+            Sélectionnés: {Object.values(selectedUsers).filter(Boolean).length}
+          </Text>
+          <TouchableOpacity style={styles.createGroupButton} onPress={createGroupFromSelection}>
+            <Text style={styles.createGroupButtonText}>Créer le groupe</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stories} contentContainerStyle={{ paddingRight: 6 }}>
         <TouchableOpacity style={styles.storyItem} onPress={pickStoryImage}>
@@ -421,21 +507,36 @@ export default function ListAccount(props) {
         data={data_sorted}
         renderItem={({ item }) => {
           const isFav = favoriteIds.includes(item.Id);
+          const isSelected = !!selectedUsers[String(item.Id)];
           return (
             <View style={styles.contact}>
-              <TouchableOpacity onPress={() => {
-                setselectedAccount(item);
-                setisModalVisible(true);  
-              }}>
-              <Image
-                style={styles.avatar}
-                source={item.UrlImage && !brokenImages[item.Id]
-                   ? { uri: item.UrlImage } 
-                   : require("../../assets/prof.png")}
-                onError={() => {
-                  setBrokenImages((prev) => ({ ...prev, [item.Id]: true }));
+              <TouchableOpacity
+                onPress={() => {
+                  if (createGroupMode) {
+                    toggleGroupUser(item.Id);
+                    return;
+                  }
+                  setselectedAccount(item);
+                  setisModalVisible(true);
                 }}
-              ></Image>
+              >
+              <View style={[styles.avatarFrame, (item.Online || item.online || item.isOnline) ? styles.avatarFrameOnline : styles.avatarFrameOffline]}>
+                <Image
+                  style={styles.avatar}
+                  source={item.UrlImage && !brokenImages[item.Id]
+                    ? { uri: item.UrlImage } 
+                    : require("../../assets/prof.png")}
+                  onError={() => {
+                    setBrokenImages((prev) => ({ ...prev, [item.Id]: true }));
+                  }}
+                />
+                <View style={[styles.presenceDot, (item.Online || item.online || item.isOnline) ? styles.presenceOnline : styles.presenceOffline]} />
+              </View>
+              {createGroupMode && (
+                <View style={[styles.selectionBadge, isSelected && styles.selectionBadgeActive]}>
+                  <Text style={styles.selectionBadgeText}>{isSelected ? "✓" : ""}</Text>
+                </View>
+              )}
               </TouchableOpacity>
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.name}> {item.Nom || "Sans nom"} {isFav ? "⭐" : ""}</Text>
@@ -577,45 +678,6 @@ export default function ListAccount(props) {
             </Text>
             <Text style={{ color: theme.colors.subtext }}>{selectedAccount?.Pseudo}</Text>
             <Text style={{ color: theme.colors.subtext }}>{selectedAccount?.Numero}</Text>
-            <View style={{ flexDirection: "row", marginTop: 16 }}>
-              <TouchableOpacity
-                onPress={() => {
-                  setisModalVisible(false);
-                  goToChat(selectedAccount);
-                }}
-                style={styles.navButton}
-              >
-                <Text style={styles.buttonText}>Message</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  callUser(selectedAccount);
-                }}
-                style={styles.navButton2}
-              >
-                <Text style={styles.buttonText}>Appeler</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={{ flexDirection: "row", marginTop: 12, gap: 8 }}>
-              <TouchableOpacity
-                onPress={() => openEditContact(selectedAccount)}
-                style={[styles.navButton, { flex: 1, backgroundColor: theme.colors.primary }]}
-              >
-                <Text style={styles.buttonText}>✏️ Modifier</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => deleteContact(selectedAccount.Id)}
-                style={[styles.navButton, { flex: 1, backgroundColor: "#ff4444" }]}
-              >
-                <Text style={styles.buttonText}>🗑️ Supprimer</Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity
-              onPress={() => setisModalVisible(false)}
-              style={{ marginTop: 16, alignSelf: "flex-end" }}
-            >
-              <Text style={{ color: theme.colors.primary, fontWeight: "bold" }}>Fermer</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -692,7 +754,7 @@ export default function ListAccount(props) {
           </View>
         </View>
       </Modal>
-    </ImageBackground>
+    </ModernBackground>
   );
 }
 
@@ -704,20 +766,32 @@ const getStyles = (theme) => StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   header: {
-    width: "100%",
-    backgroundColor: theme.colors.primaryDark,
+    width: "95%",
+    backgroundColor: theme.colors.glass,
     padding: 18,
     paddingTop: 22,
     marginBottom: 10,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.52)",
     ...theme.elevation.mid,
   },
   welcome: {
-    color: "#e0f0ef",
+    color: theme.colors.subtext,
     fontSize: 12,
     fontWeight: "600",
     marginBottom: 4,
+  },
+  headerPill: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  headerPillText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 12,
   },
   headerRow: {
     flexDirection: "row",
@@ -742,12 +816,12 @@ const getStyles = (theme) => StyleSheet.create({
   },
   logo: {
     fontSize: 28,
-    color: "#fff",
+    color: theme.colors.text,
     fontWeight: "800",
   },
   searchWrap: {
     width: "95%",
-    backgroundColor: "#ffffff22",
+    backgroundColor: theme.colors.surface,
     marginBottom: 8,
     borderRadius: 20,
     height: 50,
@@ -755,15 +829,54 @@ const getStyles = (theme) => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.elevation.low,
   },
   searchIcon: {
-    color: "#e9f7f7",
-    fontSize: 16,
+    color: theme.colors.primary,
+    fontSize: 12,
+    fontWeight: "800",
   },
   search: {
     flex: 1,
-    color: "#fff",
+    color: theme.colors.text,
     fontSize: 14,
+  },
+  createGroupPanel: {
+    width: "95%",
+    backgroundColor: theme.colors.glass,
+    borderRadius: 20,
+    padding: 14,
+    marginBottom: 10,
+    gap: 10,
+  },
+  createGroupTitle: {
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  createGroupInput: {
+    backgroundColor: theme.colors.surface,
+    color: theme.colors.text,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  createGroupHint: {
+    color: theme.colors.subtext,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  createGroupButton: {
+    backgroundColor: theme.colors.primary,
+    paddingVertical: 13,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+  createGroupButtonText: {
+    color: "#fff",
+    fontWeight: "800",
   },
   stories: {
     width: "95%",
@@ -779,7 +892,7 @@ const getStyles = (theme) => StyleSheet.create({
   storyRing: {
     padding: 2,
     borderRadius: 999,
-    backgroundColor: theme.colors.accent,
+    backgroundColor: theme.colors.secondary,
   },
   storyAvatar: {
     width: 52,
@@ -809,26 +922,80 @@ const getStyles = (theme) => StyleSheet.create({
     fontWeight: "700",
   },
   storyLabel: {
-    color: "#e9f7f7",
+    color: theme.colors.text,
     fontSize: 11,
     marginTop: 4,
+    fontWeight: "700",
   },
   contact: {
     flexDirection: "row",
-    backgroundColor: "transparent",
+    backgroundColor: theme.colors.glass,
     marginBottom: 10,
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 12,
-    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 13,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "#ffffffcc",
+    borderColor: "rgba(255,255,255,0.55)",
+    ...theme.elevation.low,
   },
   avatar: {
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: theme.colors.muted,
+  },
+  avatarFrame: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+  },
+  avatarFrameOnline: {
+    borderColor: "#40D39B",
+  },
+  avatarFrameOffline: {
+    borderColor: "rgba(255,255,255,0.72)",
+  },
+  selectionBadge: {
+    position: "absolute",
+    right: -4,
+    top: -4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectionBadgeActive: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  selectionBadgeText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 12,
+  },
+  presenceDot: {
+    position: "absolute",
+    right: 4,
+    bottom: 5,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  presenceOnline: {
+    backgroundColor: "#40D39B",
+  },
+  presenceOffline: {
+    backgroundColor: "#A7B4B7",
   },
   name: {
     fontWeight: "800",
@@ -853,14 +1020,14 @@ const getStyles = (theme) => StyleSheet.create({
     marginHorizontal: 4,
   },
   smallButton: {
-    backgroundColor: "transparent",
+    backgroundColor: theme.colors.secondary,
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 14,
     marginHorizontal: 2,
   },
   smallButton2: {
-    backgroundColor: "transparent",
+    backgroundColor: theme.colors.primary,
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 14,

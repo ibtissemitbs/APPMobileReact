@@ -13,6 +13,7 @@ import React, { useEffect, useState } from "react"
 import firebase from "../../Config";
 import PrimaryButton from "../../components/ui/PrimaryButton";
 import { useAppSettings } from "../../Config/appSettings";
+import ModernBackground from "../../components/ui/ModernBackground";
 
 const database = firebase.database();
 const ref_all_accounts = database.ref("allaccounts");
@@ -246,7 +247,7 @@ export default function Groupe(props) {
   });
 
   return (
-    <ImageBackground
+    <ModernBackground
       style={styles.container}
       source={require("../../assets/backgr.jpg")}
     >
@@ -475,7 +476,7 @@ export default function Groupe(props) {
           </View>
         )}
       </ScrollView>
-    </ImageBackground>
+    </ModernBackground>
   )
 }
 
@@ -487,14 +488,16 @@ const getStyles = (theme) => StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   hero: {
-    backgroundColor: theme.colors.primaryDark,
+    backgroundColor: theme.colors.glass,
     borderRadius: 26,
     padding: 18,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.52)",
     ...theme.elevation.mid,
   },
   heroTag: {
-    color: "#e0f0ef",
+    color: theme.colors.subtext,
     fontSize: 12,
     fontWeight: "600",
   },
@@ -507,10 +510,10 @@ const getStyles = (theme) => StyleSheet.create({
   heroTitle: {
     fontSize: 28,
     fontWeight: "800",
-    color: "#fff",
+    color: theme.colors.text,
   },
   newBtn: {
-    backgroundColor: "transparent",
+    backgroundColor: theme.colors.primary,
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 14,
@@ -522,7 +525,7 @@ const getStyles = (theme) => StyleSheet.create({
   },
   searchWrap: {
     marginTop: 12,
-    backgroundColor: "#ffffff22",
+    backgroundColor: theme.colors.surface,
     borderRadius: 18,
     height: 48,
     paddingHorizontal: 14,
@@ -531,12 +534,12 @@ const getStyles = (theme) => StyleSheet.create({
     gap: 8,
   },
   searchIcon: {
-    color: "#e9f7f7",
+    color: theme.colors.primary,
     fontSize: 14,
   },
   searchInput: {
     flex: 1,
-    color: "#fff",
+    color: theme.colors.text,
     fontSize: 14,
   },
   box: {
@@ -686,27 +689,28 @@ const getStyles = (theme) => StyleSheet.create({
     gap: 10,
   },
   groupCardNew: {
-    backgroundColor: "transparent",
+    backgroundColor: theme.colors.glass,
     padding: 14,
     borderRadius: 22,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: "rgba(255,255,255,0.55)",
+    ...theme.elevation.low,
   },
   groupIcon: {
     width: 56,
     height: 56,
     borderRadius: 18,
-    backgroundColor: theme.colors.accent,
+    backgroundColor: theme.colors.secondary,
     alignItems: "center",
     justifyContent: "center",
   },
   groupIconText: {
     fontSize: 20,
     fontWeight: "800",
-    color: theme.colors.text,
+    color: "#fff",
   },
   groupTitle: {
     fontSize: 16,

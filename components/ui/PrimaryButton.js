@@ -30,13 +30,16 @@ export default function PrimaryButton({ children, onPress, style, disabled, load
 const getStyles = (theme) => StyleSheet.create({
   button: {
     backgroundColor: theme.colors.primary,
+    minHeight: 50,
     paddingVertical: theme.spacing.sm,
     paddingHorizontal: theme.spacing.lg,
-    borderRadius: theme.radius.lg,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
     ...theme.elevation.mid
   },
   pressed: {

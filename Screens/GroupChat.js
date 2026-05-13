@@ -4,9 +4,10 @@ import * as DocumentPicker from "expo-document-picker";
 import {
   Alert,
   Image,
-  ImageBackground,
+  KeyboardAvoidingView,
   Linking,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,13 +17,21 @@ import {
 } from "react-native";
 import firebase from "../Config";
 import { supabase } from "../Config";
-import EmojiSelector from "react-native-emoji-selector";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAppSettings } from "../Config/appSettings";
+import EmojiPickerModal from "../components/ui/EmojiPickerModal";
+import ModernBackground from "../components/ui/ModernBackground";
 
 const database = firebase.database();
 const ref_groups = database.ref("groups");
 const ref_all_accounts = database.ref("allaccounts");
+
+const DISCUSSION_BACKGROUND_PRESETS = {
+  backgr: require("../assets/backgr.jpg"),
+  back: require("../assets/back.jpg"),
+  iphone: require("../assets/iphone.jpg"),
+  picture: require("../assets/picture.png"),
+};
 
 export default function GroupChat(props) {
   const userid = props.route?.params?.userid ?? props.route?.params?.userId;
@@ -34,7 +43,6 @@ export default function GroupChat(props) {
   const [accounts, setaccounts] = useState([]);
   const [messages, setmessages] = useState([]);
   const [message, setmessage] = useState("");
-  const [menuOpen, setmenuOpen] = useState(false);
   const [isMediaModalVisible, setisMediaModalVisible] = useState(false);
   const [isEmojiVisible, setisEmojiVisible] = useState(false);
   const [addMemberModalVisible, setaddMemberModalVisible] = useState(false);
@@ -52,6 +60,17 @@ export default function GroupChat(props) {
     Numero: "",
   });
   const [groupPhotoModalVisible, setgroupPhotoModalVisible] = useState(false);
+  const [groupInfoVisible, setgroupInfoVisible] = useState(false);
+  const [editGroupModalVisible, seteditGroupModalVisible] = useState(false);
+  const [themeModalVisible, setthemeModalVisible] = useState(false);
+  const [backgroundModalVisible, setbackgroundModalVisible] = useState(false);
+  const [reactionModalVisible, setreactionModalVisible] = useState(false);
+  const [nicknameModalVisible, setnicknameModalVisible] = useState(false);
+  const [wordEffectModalVisible, setwordEffectModalVisible] = useState(false);
+  const [groupNameInput, setgroupNameInput] = useState("");
+  const [nicknameInput, setnicknameInput] = useState("");
+  const [wordTriggerInput, setwordTriggerInput] = useState("");
+  const [wordEmojiInput, setwordEmojiInput] = useState("");
   const memberIds = group?.members ? Object.keys(group.members) : [];
 
   useEffect(() => {
@@ -236,6 +255,7 @@ export default function GroupChat(props) {
 
   function leaveGroup() {
     if (!groupId || !userid) return;
+    setgroupInfoVisible(false);
     Alert.alert("Quitter le groupe", "Voulez-vous quitter ce groupe ?", [
       { text: "Annuler", style: "cancel" },
       {
@@ -251,6 +271,7 @@ export default function GroupChat(props) {
 
   function deleteGroup() {
     if (!groupId) return;
+    setgroupInfoVisible(false);
     Alert.alert("Supprimer le groupe", "Supprimer ce groupe pour tout le monde ?", [
       { text: "Annuler", style: "cancel" },
       {
@@ -265,7 +286,7 @@ export default function GroupChat(props) {
   }
 
   function handleAddMember() {
-    setmenuOpen(false);
+    setgroupInfoVisible(false);
     setselectedMembers({});
     setaddMemberModalVisible(true);
   }
@@ -318,7 +339,7 @@ export default function GroupChat(props) {
     const newPinState = !isGroupPinned;
     ref_groups.child(groupId).child("pinned").set(newPinState);
     setisGroupPinned(newPinState);
-    setmenuOpen(false);
+    setgroupInfoVisible(false);
     Alert.alert("Succès", newPinState ? "Chat épinglé" : "Chat désépinglé");
   }
 
@@ -327,17 +348,17 @@ export default function GroupChat(props) {
     const newMuteState = !isGroupMuted;
     ref_groups.child(groupId).child("mutedUsers").child(userid).set(newMuteState ? true : null);
     setisGroupMuted(newMuteState);
-    setmenuOpen(false);
+    setgroupInfoVisible(false);
     Alert.alert("Succès", newMuteState ? "Notifications mises en sourdine" : "Notifications réactivées");
   }
 
   function handleSearchMessages() {
-    setmenuOpen(false);
+    setgroupInfoVisible(false);
     setsearchModalVisible(true);
   }
 
   function handleViewMembers() {
-    setmenuOpen(false);
+    setgroupInfoVisible(false);
     setmembersModalVisible(true);
   }
 
@@ -352,32 +373,177 @@ export default function GroupChat(props) {
       mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: 0.25,
+      base64: true,
     });
 
     if (!result.canceled && groupId) {
-      const localUri = result.assets[0].uri;
-      const filename = `group_${groupId}_${Date.now()}.jpg`;
+      const asset = result.assets[0];
       try {
-        const link = await uploadFileToSupabase(localUri, filename, "image/jpeg");
-        saveGroupPhoto(link);
+        if (!asset.base64) {
+          Alert.alert("Erreur", "Impossible de preparer cette image.");
+          return;
+        }
+
+        const image = `data:${asset.mimeType || "image/jpeg"};base64,${asset.base64}`;
+        if (image.length > 8000000) {
+          Alert.alert("Erreur", "L'image est trop grande. Choisissez une image plus petite.");
+          return;
+        }
+
+        await saveGroupPhoto(image);
       } catch (error) {
-        console.error("Erreur lors de l'upload:", error);
+        console.error("Erreur lors de la sauvegarde:", error);
         Alert.alert("Erreur", "Impossible de mettre à jour la photo");
       }
     }
   }
 
-  function saveGroupPhoto(photoUrl) {
+  async function saveGroupPhoto(photoUrl) {
     if (!groupId) return;
-    ref_groups.child(groupId).child("groupImage").set(photoUrl);
+    await ref_groups.child(groupId).update({
+      groupImage: photoUrl,
+      groupImageUpdatedAt: new Date().toISOString(),
+    });
     Alert.alert("Succès", "Photo du groupe mise à jour");
     setgroupPhotoModalVisible(false);
   }
 
   function handleChangeGroupPhoto() {
-    setmenuOpen(false);
-    pickGroupPhoto();
+    setgroupInfoVisible(false);
+    setTimeout(() => {
+      pickGroupPhoto();
+    }, 250);
+  }
+
+  function openEditGroup() {
+    setgroupNameInput(group?.nom || "");
+    seteditGroupModalVisible(true);
+  }
+
+  async function saveGroupName() {
+    if (!groupId || !groupNameInput.trim()) {
+      Alert.alert("Erreur", "Entrez un nom de groupe.");
+      return;
+    }
+
+    await ref_groups.child(groupId).update({
+      nom: groupNameInput.trim(),
+      updatedAt: new Date().toISOString(),
+    });
+    seteditGroupModalVisible(false);
+  }
+
+  async function saveGroupTheme(color) {
+    if (!groupId) return;
+    await ref_groups.child(groupId).update({
+      themeColor: color,
+      updatedAt: new Date().toISOString(),
+    });
+    setthemeModalVisible(false);
+  }
+
+  async function savePresetDiscussionBackground(presetKey) {
+    if (!groupId) return;
+
+    await ref_groups.child(groupId).update({
+      backgroundPreset: presetKey,
+      backgroundImage: null,
+      updatedAt: new Date().toISOString(),
+    });
+
+    setbackgroundModalVisible(false);
+    Alert.alert("Succes", "Background de la discussion mis a jour.");
+  }
+
+  async function handleChangeDiscussionBackground() {
+    if (!groupId) return;
+
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert("Permission required", "Permission to access the media library is required.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: false,
+      quality: 1,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    const localUri = result.assets?.[0]?.uri;
+    if (!localUri) {
+      Alert.alert("Erreur", "Impossible de lire l'image choisie.");
+      return;
+    }
+
+    const filename = `group-bg-${groupId}-${Date.now()}.jpg`;
+    const backgroundLink = await uploadFileToSupabase(localUri, filename, "image/jpeg");
+
+    await ref_groups.child(groupId).update({
+      backgroundPreset: null,
+      backgroundImage: backgroundLink,
+      updatedAt: new Date().toISOString(),
+    });
+
+    setbackgroundModalVisible(false);
+    Alert.alert("Succes", "Background de la discussion mis a jour.");
+  }
+
+  async function handleResetDiscussionBackground() {
+    if (!groupId) return;
+
+    await ref_groups.child(groupId).update({
+      backgroundPreset: null,
+      backgroundImage: null,
+      updatedAt: new Date().toISOString(),
+    });
+
+    Alert.alert("Succes", "Background par defaut restaure.");
+  }
+
+  async function saveQuickReaction(reaction) {
+    if (!groupId) return;
+    await ref_groups.child(groupId).update({
+      quickReaction: reaction,
+      updatedAt: new Date().toISOString(),
+    });
+    setreactionModalVisible(false);
+  }
+
+  function openNicknameModal() {
+    setnicknameInput(group?.nicknames?.[userid] || "");
+    setnicknameModalVisible(true);
+  }
+
+  async function saveNickname() {
+    if (!groupId || !userid) return;
+    await ref_groups.child(groupId).child("nicknames").child(String(userid)).set(nicknameInput.trim() || null);
+    setnicknameModalVisible(false);
+  }
+
+  function openWordEffectModal() {
+    setwordTriggerInput("");
+    setwordEmojiInput(group?.quickReaction || "✨");
+    setwordEffectModalVisible(true);
+  }
+
+  async function saveWordEffect() {
+    if (!groupId || !wordTriggerInput.trim()) {
+      Alert.alert("Erreur", "Entrez un mot.");
+      return;
+    }
+
+    await ref_groups
+      .child(groupId)
+      .child("wordEffects")
+      .child(wordTriggerInput.trim().toLowerCase())
+      .set(wordEmojiInput.trim() || "✨");
+    setwordEffectModalVisible(false);
   }
 
   function removeUserFromGroup(userId) {
@@ -438,24 +604,43 @@ export default function GroupChat(props) {
     : messages;
 
   const membersCount = group && group.members ? Object.keys(group.members).length : 0;
+  const groupAccent = group?.themeColor || theme.colors.primary;
+  const themeChoices = [theme.colors.primary, theme.colors.secondary, theme.colors.highlight, theme.colors.accent, "#2F68FF", "#FF8A00"];
+  const reactionChoices = ["👍", "❤️", "😂", "🔥", "👏", "😍", "😮", "🎉"];
+  const backgroundChoices = [
+    { key: "backgr", label: "Classic", source: DISCUSSION_BACKGROUND_PRESETS.backgr },
+    { key: "back", label: "Blue", source: DISCUSSION_BACKGROUND_PRESETS.back },
+    { key: "iphone", label: "Light", source: DISCUSSION_BACKGROUND_PRESETS.iphone },
+    { key: "picture", label: "Soft", source: DISCUSSION_BACKGROUND_PRESETS.picture },
+  ];
+  const discussionBackgroundSource = group?.backgroundPreset && DISCUSSION_BACKGROUND_PRESETS[group.backgroundPreset]
+    ? DISCUSSION_BACKGROUND_PRESETS[group.backgroundPreset]
+    : group?.backgroundImage
+      ? { uri: group.backgroundImage }
+      : DISCUSSION_BACKGROUND_PRESETS.backgr;
 
   if (!groupId || !group) {
     return (
-      <ImageBackground style={styles.container} source={require("../assets/backgr.jpg")}>
+      <ModernBackground style={styles.container} source={discussionBackgroundSource}>
         <Text style={{ color: theme.colors.text }}>Groupe introuvable</Text>
-      </ImageBackground>
+      </ModernBackground>
     );
   }
 
   return (
-    <ImageBackground style={styles.container} source={require("../assets/backgr.jpg")}>
+    <ModernBackground style={styles.container} source={discussionBackgroundSource}>
+      <KeyboardAvoidingView
+        style={styles.keyboardRoot}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+      >
       <View style={styles.header}>
         <TouchableOpacity style={styles.headerBtn} onPress={() => props.navigation.goBack()}>
           <Text style={styles.headerBtnText}>←</Text>
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.headerIcon}
-          onPress={() => setgroupPhotoModalVisible(true)}
+          onPress={() => setgroupInfoVisible(true)}
         >
           {group?.groupImage ? (
             <Image 
@@ -466,10 +651,10 @@ export default function GroupChat(props) {
             <Text style={styles.headerIconText}>{(group?.nom || "G").charAt(0)}</Text>
           )}
         </TouchableOpacity>
-        <View style={styles.headerInfo}>
+        <TouchableOpacity style={styles.headerInfo} onPress={() => setgroupInfoVisible(true)}>
           <Text numberOfLines={1} style={styles.headerTitle}>{group.nom}</Text>
           <Text style={styles.headerSubtitle}>{membersCount} members</Text>
-        </View>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.headerBtn}
           onPress={() => Alert.alert("Indisponible", "Appel de groupe non disponible.")}
@@ -482,43 +667,125 @@ export default function GroupChat(props) {
         >
           <Ionicons name="call" size={18} color="#fff" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => setmenuOpen(!menuOpen)}>
-          <Ionicons name="ellipsis-vertical" size={16} color="#fff" />
-        </TouchableOpacity>
 
-        {menuOpen && (
-          <View style={styles.menuCard}>
-            <TouchableOpacity style={styles.menuItem} onPress={handleAddMember}>
-              <Text style={styles.menuItemText}>Add member</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={handleMuteNotifications}>
-              <Text style={styles.menuItemText}>{isGroupMuted ? "Unmute notifications" : "Mute notifications"}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={handlePinChat}>
-              <Text style={styles.menuItemText}>{isGroupPinned ? "Unpin chat" : "Pin chat"}</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.menuItem} onPress={handleSearchMessages}>
-              <Text style={styles.menuItemText}>Search messages</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={handleViewMembers}>
-              <Text style={styles.menuItemText}>View members ({membersCount})</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={handleChangeGroupPhoto}>
-              <Text style={styles.menuItemText}>📷 Change group photo</Text>
-            </TouchableOpacity>
-            <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuItem} onPress={leaveGroup}>
-              <Text style={[styles.menuItemText, styles.menuDanger]}>Leave group</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={deleteGroup}>
-              <Text style={[styles.menuItemText, styles.menuDanger]}>Delete group</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </View>
 
-      <ScrollView contentContainerStyle={styles.messagesWrap}>
+      <Modal
+        visible={groupInfoVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setgroupInfoVisible(false)}
+      >
+        <View style={styles.groupModalOverlay}>
+          <View style={styles.groupModalContent}>
+            <Text style={styles.groupModalTitle}>{group?.nom}</Text>
+            
+            <TouchableOpacity 
+              style={styles.groupModalOption}
+              onPress={() => {
+                setgroupInfoVisible(false); setTimeout(() => setthemeModalVisible(true), 300);
+              }}
+            >
+              <View style={[styles.groupModalIcon, { backgroundColor: groupAccent }]} />
+              <Text style={styles.groupModalText}>THEME</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.groupModalOption}
+              onPress={() => {
+                setgroupInfoVisible(false); setTimeout(() => setbackgroundModalVisible(true), 300);
+              }}
+            >
+              <Ionicons name="image-outline" size={24} color={theme.colors.primary} />
+              <Text style={styles.groupModalText}>CHANGE BACKGROUND</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.groupModalOption}
+              onPress={() => {
+                setgroupInfoVisible(false); setTimeout(() => handleResetDiscussionBackground(), 300);
+              }}
+            >
+              <Ionicons name="refresh-outline" size={24} color={theme.colors.primary} />
+              <Text style={styles.groupModalText}>RESET BACKGROUND</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.groupModalOption}
+              onPress={() => {
+                setgroupInfoVisible(false); setTimeout(() => openNicknameModal(), 300);
+              }}
+            >
+              <Text style={styles.groupModalIconText}>Aa</Text>
+              <Text style={styles.groupModalText}>NICKNAME</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.groupModalOption}
+              onPress={() => {
+                setgroupInfoVisible(false); setTimeout(() => handleAddMember(), 300);
+              }}
+            >
+              <Ionicons name="person-add" size={24} color={theme.colors.primary} />
+              <Text style={styles.groupModalText}>ADD MEMBER</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.groupModalOption}
+              onPress={() => {
+                setgroupInfoVisible(false);
+                props.navigation.navigate('MediaGallery', { mode: 'group', id: groupId });
+              }}
+            >
+              <Ionicons name="images" size={24} color={theme.colors.primary} />
+              <Text style={styles.groupModalText}>VIEW MEDIA, FILES</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.groupModalOption}
+              onPress={() => {
+                setgroupInfoVisible(false); setTimeout(() => handleSearchMessages(), 300);
+              }}
+            >
+              <Ionicons name="search" size={24} color={theme.colors.primary} />
+              <Text style={styles.groupModalText}>SEARCH IN CONVERSATION</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.groupModalOption, styles.groupModalOptionDanger]}
+              onPress={() => {
+                setgroupInfoVisible(false); setTimeout(() => leaveGroup(), 300);
+              }}
+            >
+              <Ionicons name="exit-outline" size={24} color={theme.colors.danger} />
+              <Text style={[styles.groupModalText, styles.groupModalDangerText]}>LEAVE GROUP</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.groupModalOption, styles.groupModalOptionDanger]}
+              onPress={() => {
+                setgroupInfoVisible(false); setTimeout(() => deleteGroup(), 300);
+              }}
+            >
+              <Ionicons name="trash-outline" size={24} color={theme.colors.danger} />
+              <Text style={[styles.groupModalText, styles.groupModalDangerText]}>DELETE GROUP</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.groupModalClose}
+              onPress={() => setgroupInfoVisible(false)}
+            >
+              <Text style={styles.groupModalCloseText}>CANCEL</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <ScrollView
+        style={styles.messagesList}
+        contentContainerStyle={styles.messagesWrap}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.datePill}>
           <Text style={styles.dateText}>GROUP CREATED · TODAY</Text>
         </View>
@@ -532,7 +799,7 @@ export default function GroupChat(props) {
                   <Text style={styles.avatarText}>{getAccountInitial(item.sender)}</Text>
                 </View>
               )}
-              <View style={[styles.messageBubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
+              <View style={[styles.messageBubble, mine ? [styles.bubbleMine, { backgroundColor: groupAccent }] : styles.bubbleOther]}>
                 {!mine && (
                   <Text style={styles.messageAuthor}>{getAccountName(item.sender)}</Text>
                 )}
@@ -549,7 +816,7 @@ export default function GroupChat(props) {
                     <Text style={styles.mediaText}>Ouvrir fichier</Text>
                   </TouchableOpacity>
                 ) : (
-                  <Text style={styles.messageText}>{item.message}</Text>
+                  <Text style={[styles.messageText, mine && styles.messageTextMine]}>{item.message}</Text>
                 )}
                 <Text style={styles.messageTime}>{item.time}</Text>
               </View>
@@ -572,11 +839,11 @@ export default function GroupChat(props) {
           <MaterialCommunityIcons name="paperclip" size={18} color={theme.colors.primary} />
         </TouchableOpacity>
         {message.trim().length > 0 ? (
-          <TouchableOpacity style={styles.inputMic} onPress={() => sendGroupMessage(message, "text")}>
+          <TouchableOpacity style={[styles.inputMic, { backgroundColor: groupAccent }]} onPress={() => sendGroupMessage(message, "text")}>
             <MaterialCommunityIcons name="send" size={18} color="#fff" />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.inputMic}>
+          <TouchableOpacity style={[styles.inputMic, { backgroundColor: groupAccent }]}>
             <MaterialCommunityIcons name="microphone" size={18} color="#fff" />
           </TouchableOpacity>
         )}
@@ -612,32 +879,171 @@ export default function GroupChat(props) {
         </View>
       </Modal>
 
-      <Modal
-        visible={isEmojiVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setisEmojiVisible(false)}
-      >
-        <View style={styles.emojiOverlay}>
-          <View style={styles.emojiCard}>
-            <View style={styles.emojiHeader}>
-              <Text style={styles.emojiTitle}>Emojis</Text>
-              <TouchableOpacity onPress={() => setisEmojiVisible(false)}>
-                <Text style={styles.emojiClose}>Fermer</Text>
+      <Modal visible={editGroupModalVisible} transparent animationType="fade" onRequestClose={() => seteditGroupModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Change group</Text>
+              <TouchableOpacity onPress={() => seteditGroupModalVisible(false)}>
+                <Ionicons name="close" size={26} color={theme.colors.text} />
               </TouchableOpacity>
             </View>
-            <EmojiSelector
-              onEmojiSelected={(emoji) => {
-                setmessage((prev) => prev + emoji);
-                setisEmojiVisible(false);
-              }}
-              showSearchBar={false}
-              columns={8}
-              category={"all"}
+            <Text style={styles.editLabel}>Group name</Text>
+            <TextInput
+              style={styles.editInput}
+              value={groupNameInput}
+              onChangeText={setgroupNameInput}
+              placeholder="Group name"
+              placeholderTextColor={theme.colors.subtext}
             />
+            <TouchableOpacity style={styles.changePhotoBtn} onPress={handleChangeGroupPhoto}>
+              <Text style={styles.changePhotoBtnText}>Change image</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.saveButton} onPress={saveGroupName}>
+              <Text style={styles.saveButtonText}>Save</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
+      <Modal visible={themeModalVisible} transparent animationType="fade" onRequestClose={() => setthemeModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Theme</Text>
+              <TouchableOpacity onPress={() => setthemeModalVisible(false)}>
+                <Ionicons name="close" size={26} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.swatchGrid}>
+              {themeChoices.map((color) => (
+                <TouchableOpacity
+                  key={color}
+                  style={[styles.swatch, { backgroundColor: color }, groupAccent === color && styles.swatchActive]}
+                  onPress={() => saveGroupTheme(color)}
+                />
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={backgroundModalVisible} transparent animationType="fade" onRequestClose={() => setbackgroundModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Choose background</Text>
+              <TouchableOpacity onPress={() => setbackgroundModalVisible(false)}>
+                <Ionicons name="close" size={26} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.backgroundGrid}>
+              {backgroundChoices.map((item) => {
+                const isActive = group?.backgroundPreset === item.key;
+                return (
+                  <TouchableOpacity
+                    key={item.key}
+                    style={[styles.backgroundChoice, isActive && styles.backgroundChoiceActive]}
+                    onPress={() => savePresetDiscussionBackground(item.key)}
+                  >
+                    <Image source={item.source} style={styles.backgroundThumb} />
+                    <Text style={styles.backgroundChoiceLabel}>{item.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity style={styles.saveButton} onPress={handleChangeDiscussionBackground}>
+              <Text style={styles.saveButtonText}>Pick from gallery</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={reactionModalVisible} transparent animationType="fade" onRequestClose={() => setreactionModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Quick reaction</Text>
+              <TouchableOpacity onPress={() => setreactionModalVisible(false)}>
+                <Ionicons name="close" size={26} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.reactionGrid}>
+              {reactionChoices.map((reaction) => (
+                <TouchableOpacity key={reaction} style={styles.reactionOption} onPress={() => saveQuickReaction(reaction)}>
+                  <Text style={styles.reactionOptionText}>{reaction}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={nicknameModalVisible} transparent animationType="fade" onRequestClose={() => setnicknameModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Nickname</Text>
+              <TouchableOpacity onPress={() => setnicknameModalVisible(false)}>
+                <Ionicons name="close" size={26} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.editInput}
+              value={nicknameInput}
+              onChangeText={setnicknameInput}
+              placeholder="Votre surnom dans ce groupe"
+              placeholderTextColor={theme.colors.subtext}
+            />
+            <TouchableOpacity style={styles.saveButton} onPress={saveNickname}>
+              <Text style={styles.saveButtonText}>Save nickname</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={wordEffectModalVisible} transparent animationType="fade" onRequestClose={() => setwordEffectModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Word effect</Text>
+              <TouchableOpacity onPress={() => setwordEffectModalVisible(false)}>
+                <Ionicons name="close" size={26} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.editInput}
+              value={wordTriggerInput}
+              onChangeText={setwordTriggerInput}
+              placeholder="Mot declencheur"
+              placeholderTextColor={theme.colors.subtext}
+            />
+            <TextInput
+              style={styles.editInput}
+              value={wordEmojiInput}
+              onChangeText={setwordEmojiInput}
+              placeholder="Emoji / effet"
+              placeholderTextColor={theme.colors.subtext}
+            />
+            <TouchableOpacity style={styles.saveButton} onPress={saveWordEffect}>
+              <Text style={styles.saveButtonText}>Save effect</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <EmojiPickerModal
+        visible={isEmojiVisible}
+        theme={theme}
+        onClose={() => setisEmojiVisible(false)}
+        onSelect={(emoji) => {
+          setmessage((prev) => prev + emoji);
+          setisEmojiVisible(false);
+        }}
+      />
+      </KeyboardAvoidingView>
 
       {/* Modal Add Member */}
       <Modal
@@ -930,7 +1336,7 @@ export default function GroupChat(props) {
           </View>
         </View>
       </Modal>
-    </ImageBackground>
+    </ModernBackground>
   );
 }
 
@@ -940,20 +1346,27 @@ const getStyles = (theme) => StyleSheet.create({
     paddingTop: 32,
     backgroundColor: theme.colors.background,
   },
+  keyboardRoot: {
+    flex: 1,
+    width: "100%",
+  },
   header: {
-    backgroundColor: theme.colors.primaryDark,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    marginHorizontal: 12,
+    backgroundColor: theme.colors.glass,
+    borderRadius: 28,
     padding: 14,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.52)",
+    ...theme.elevation.mid,
   },
   headerBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#ffffff22",
+    backgroundColor: theme.colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -978,50 +1391,140 @@ const getStyles = (theme) => StyleSheet.create({
     minWidth: 0,
   },
   headerTitle: {
-    color: "#fff",
+    color: theme.colors.text,
     fontSize: 16,
     fontWeight: "700",
   },
   headerSubtitle: {
-    color: "#e7f6f1",
+    color: theme.colors.subtext,
     fontSize: 11,
   },
-  menuCard: {
-    position: "absolute",
-    right: 12,
-    top: 60,
-    backgroundColor: "#f1fbf7",
-    borderRadius: 18,
-    paddingVertical: 6,
-    width: 210,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    zIndex: 10,
+  infoScreen: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
   },
-  menuItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+  infoScroll: {
+    flex: 1,
   },
-  menuItemText: {
+  infoContent: {
+    paddingTop: 54,
+    paddingHorizontal: 18,
+    paddingBottom: 38,
+    alignItems: "stretch",
+  },
+  infoBack: {
+    width: 46,
+    height: 46,
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  infoAvatarWrap: {
+    alignSelf: "center",
+    marginTop: 8,
+    marginBottom: 20,
+    zIndex: 0,
+  },
+  infoAvatar: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+  },
+  infoAvatarPlaceholder: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    backgroundColor: theme.colors.muted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  infoTitle: {
     color: theme.colors.text,
+    fontSize: 34,
+    fontWeight: "800",
+    textAlign: "center",
+    marginTop: 20,
+  },
+  infoLink: {
+    color: theme.colors.secondary,
+    textAlign: "center",
+    fontSize: 19,
+    fontWeight: "800",
+    marginTop: 14,
+  },
+  infoSectionLabel: {
+    color: theme.colors.subtext,
+    fontSize: 22,
+    fontWeight: "800",
+    marginBottom: 12,
+    marginLeft: 6,
+  },
+  infoCard: {
+    width: "100%",
+    backgroundColor: theme.colors.glass,
+    borderRadius: 18,
+    overflow: "hidden",
+    marginBottom: 28,
+  },
+  infoRow: {
+    width: "100%",
+    alignSelf: "stretch",
+    minHeight: 76,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    gap: 18,
+    zIndex: 5,
+  },
+  infoRowLast: {
+    borderBottomWidth: 0,
+  },
+  infoRowIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+  infoRowIconPlain: {
+    width: 38,
+    textAlign: "center",
+  },
+  infoAa: {
+    width: 38,
+    color: theme.colors.primary,
+    fontSize: 28,
+    fontWeight: "800",
+  },
+  infoRowText: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 22,
     fontWeight: "600",
   },
-  menuDanger: {
-    color: "#cc4b4b",
+  infoRowSub: {
+    color: theme.colors.subtext,
+    fontSize: 15,
+    marginTop: 3,
   },
-  menuDivider: {
-    height: 1,
-    backgroundColor: theme.colors.border,
-    marginVertical: 4,
+  infoRowValue: {
+    color: theme.colors.subtext,
+    fontSize: 16,
+    maxWidth: 110,
+  },
+  infoDangerText: {
+    color: theme.colors.danger,
   },
   messagesWrap: {
     padding: 14,
-    paddingBottom: 100,
+    paddingBottom: 20,
     gap: 10,
+  },
+  messagesList: {
+    flex: 1,
   },
   datePill: {
     alignSelf: "center",
-    backgroundColor: "#ffffff88",
+    backgroundColor: theme.colors.surface,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
@@ -1062,12 +1565,13 @@ const getStyles = (theme) => StyleSheet.create({
     borderRadius: 18,
   },
   bubbleOther: {
-    backgroundColor: "#fff",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
   bubbleMine: {
     backgroundColor: theme.colors.primary,
+    borderTopRightRadius: 8,
   },
   messageAuthor: {
     fontSize: 11,
@@ -1077,6 +1581,9 @@ const getStyles = (theme) => StyleSheet.create({
   },
   messageText: {
     color: theme.colors.text,
+  },
+  messageTextMine: {
+    color: "#fff",
   },
   messageTime: {
     fontSize: 10,
@@ -1103,11 +1610,9 @@ const getStyles = (theme) => StyleSheet.create({
     fontWeight: "700",
   },
   inputWrap: {
-    position: "absolute",
-    left: 12,
-    right: 12,
-    bottom: 16,
-    backgroundColor: "#fff",
+    marginHorizontal: 12,
+    marginBottom: 12,
+    backgroundColor: theme.colors.surface,
     borderRadius: 24,
     paddingHorizontal: 8,
     paddingVertical: 6,
@@ -1116,6 +1621,7 @@ const getStyles = (theme) => StyleSheet.create({
     gap: 6,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    ...theme.elevation.mid,
   },
   inputIcon: {
     width: 34,
@@ -1404,6 +1910,66 @@ const getStyles = (theme) => StyleSheet.create({
     fontWeight: "700",
     fontSize: 16,
   },
+  swatchGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 14,
+    paddingVertical: 8,
+  },
+  swatch: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 3,
+    borderColor: "transparent",
+  },
+  swatchActive: {
+    borderColor: theme.colors.text,
+  },
+  reactionGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  reactionOption: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: theme.colors.muted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reactionOptionText: {
+    fontSize: 28,
+  },
+  backgroundGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  backgroundChoice: {
+    width: "47%",
+    borderRadius: 14,
+    padding: 6,
+    borderWidth: 2,
+    borderColor: "transparent",
+    backgroundColor: theme.colors.muted,
+  },
+  backgroundChoiceActive: {
+    borderColor: theme.colors.primary,
+  },
+  backgroundThumb: {
+    width: "100%",
+    height: 82,
+    borderRadius: 10,
+  },
+  backgroundChoiceLabel: {
+    marginTop: 8,
+    color: theme.colors.text,
+    fontWeight: "700",
+    fontSize: 13,
+    textAlign: "center",
+  },
   photoModalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.6)",
@@ -1458,4 +2024,78 @@ const getStyles = (theme) => StyleSheet.create({
     fontWeight: "700",
     fontSize: 16,
   },
+  groupModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  groupModalContent: {
+    backgroundColor: theme.colors.glass,
+    borderRadius: 20,
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    width: "80%",
+    maxWidth: 350,
+  },
+  groupModalTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: theme.colors.text,
+    marginBottom: 24,
+    textAlign: "center",
+  },
+  groupModalOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surface,
+    gap: 12,
+  },
+  groupModalOptionDanger: {
+    backgroundColor: "rgba(255, 59, 48, 0.1)",
+  },
+  groupModalIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+  },
+  groupModalIconText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: theme.colors.primary,
+    width: 32,
+    height: 32,
+    textAlign: "center",
+    textAlignVertical: "center",
+  },
+  groupModalText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: theme.colors.text,
+  },
+  groupModalDangerText: {
+    color: theme.colors.danger,
+  },
+  groupModalClose: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surface,
+    alignItems: "center",
+  },
+  groupModalCloseText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: theme.colors.subtext,
+  },
 });
+
+
+
+
+

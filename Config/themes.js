@@ -45,31 +45,41 @@ const base = {
 export const lightTheme = {
   ...base,
   colors: {
-    background: "#E9F7F7",
+    background: "#F0FFFE",
     surface: "#FFFFFF",
-    primary: "#2E8F92",
-    primaryDark: "#256B6D",
-    accent: "#A7D7C5",
-    muted: "#E6F0EF",
-    text: "#0F2E31",
-    subtext: "#476C6D",
-    border: "#CFE7E6",
-    danger: "#E86A6A"
+    primary: "#4BA9A3",
+    primaryDark: "#357A74",
+    secondary: "#CB9DAE",
+    highlight: "#D9ADB8",
+    accent: "#7ECBC8",
+    muted: "#E8F7F5",
+    text: "#14242B",
+    subtext: "#60727B",
+    border: "#D0E9E5",
+    success: "#4BA9A3",
+    warning: "#F5A524",
+    danger: "#E9576B",
+    glass: "rgba(255,255,255,0.78)"
   }
 };
 
 export const darkTheme = {
   ...base,
   colors: {
-    background: "#0F1F1D",
-    surface: "#182B29",
-    primary: "#4AB2B3",
-    primaryDark: "#0B2A29",
-    accent: "#2D6E6A",
-    muted: "#203735",
-    text: "#E9F7F7",
-    subtext: "#B8D0D1",
-    border: "#2C4A48",
-    danger: "#E86A6A"
+    background: "#0F2926",
+    surface: "#1A3F3A",
+    primary: "#6FBEB8",
+    primaryDark: "#4BA9A3",
+    secondary: "#DEB0C4",
+    highlight: "#E5C1D1",
+    accent: "#9FDBDA",
+    muted: "#274540",
+    text: "#EEF7FA",
+    subtext: "#AABBC3",
+    border: "#3A6560",
+    success: "#6FBEB8",
+    warning: "#F5B84B",
+    danger: "#FF8B88",
+    glass: "rgba(31,63,60,0.78)"
   }
 };

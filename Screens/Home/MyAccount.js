@@ -19,6 +19,7 @@ import firebase from "../../Config";
 import PrimaryButton from "../../components/ui/PrimaryButton";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppSettings } from "../../Config/appSettings";
+import ModernBackground from "../../components/ui/ModernBackground";
 
 const auth = firebase.auth();
 const database = firebase.database();
@@ -128,8 +129,8 @@ export default function MyAccount(props) {
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
-      <ImageBackground source={require("../../assets/backgr.jpg")} style={styles.bg}>
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ModernBackground source={require("../../assets/backgr.jpg")} style={styles.bg}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} scrollEnabled={true}>
           <View style={[styles.profileCard, isDark && styles.profileCardDark]}>
             <View style={styles.avatarWrap}>
               <View style={styles.avatarShell}>
@@ -291,7 +292,7 @@ export default function MyAccount(props) {
             </View>
           </View>
         </Modal>
-      </ImageBackground>
+      </ModernBackground>
     </View>
   );
 }
@@ -301,24 +302,27 @@ const getStyles = (theme) => StyleSheet.create({
   bg: { flex: 1 },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 80,
-    paddingTop: 20,
+    paddingBottom: 140,
+    paddingTop: 80,
+    flexGrow: 1,
+    justifyContent: "flex-start",
   },
   profileCard: {
-    backgroundColor: "rgba(255,255,255,0.45)",
+    backgroundColor: theme.colors.glass,
     borderRadius: 28,
-    padding: 18,
+    padding: 20,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: "rgba(255,255,255,0.52)",
+    marginBottom: 24,
     ...theme.elevation.mid,
   },
   avatarWrap: { alignItems: "center" },
   avatarShell: {
     width: 98,
     height: 98,
-    borderRadius: 26,
-    backgroundColor: theme.colors.accent,
+    borderRadius: 32,
+    backgroundColor: theme.colors.secondary,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -341,7 +345,7 @@ const getStyles = (theme) => StyleSheet.create({
   bio: { marginTop: 8, color: theme.colors.subtext, textAlign: "center" },
   editBtn: {
     marginTop: 14,
-    backgroundColor: "transparent",
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 20,
@@ -355,11 +359,11 @@ const getStyles = (theme) => StyleSheet.create({
   input: { backgroundColor: "transparent", padding: 14, borderRadius: 14, marginTop: 6, borderWidth: 1, borderColor: theme.colors.border },
   inputReadonly: { color: theme.colors.subtext },
   settingsCard: {
-    marginTop: 16,
-    backgroundColor: "rgba(255,255,255,0.45)",
+    marginTop: 48,
+    backgroundColor: theme.colors.glass,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: "rgba(255,255,255,0.52)",
     overflow: "hidden",
     ...theme.elevation.low,
   },
@@ -369,7 +373,7 @@ const getStyles = (theme) => StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: "rgba(255,255,255,0.45)",
+    backgroundColor: "transparent",
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
@@ -383,10 +387,10 @@ const getStyles = (theme) => StyleSheet.create({
   },
   settingsText: { flex: 1, fontWeight: "700", color: theme.colors.text },
   logout: {
-    marginTop: 16,
+    marginTop: 48,
     paddingVertical: 14,
     borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.45)",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
     alignItems: "center",

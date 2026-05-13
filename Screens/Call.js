@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ImageBackground, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   ChannelProfileType,
@@ -10,6 +10,7 @@ import {
 } from "react-native-agora";
 import { AGORA_APP_ID, AGORA_TOKEN, AGORA_TOKEN_SERVER_URL } from "../Config/agora";
 import { useAppSettings } from "../Config/appSettings";
+import ModernBackground from "../components/ui/ModernBackground";
 
 export default function Call(props) {
   const channelName = props.route?.params?.channelName;
@@ -62,16 +63,8 @@ export default function Call(props) {
           const data = await response.json();
           token = data?.token || "";
         } catch (err) {
-          if (isActive) {
-            setTokenError("Token server error");
-          }
-          return;
+          token = "";
         }
-      }
-
-      if (!token && AGORA_TOKEN_SERVER_URL) {
-        setTokenError("Missing Agora token");
-        return;
       }
 
       engine.joinChannel(token || null, channelName, 0, {
@@ -125,21 +118,21 @@ export default function Call(props) {
 
   if (!channelName) {
     return (
-      <ImageBackground style={styles.container} source={require("../assets/backgr.jpg")}>
+      <ModernBackground style={styles.container}>
         <Text style={{ color: theme.colors.text }}>Channel introuvable</Text>
-      </ImageBackground>
+      </ModernBackground>
     );
   }
 
   if (tokenError) {
     return (
-      <ImageBackground style={styles.container} source={require("../assets/backgr.jpg")}>
+      <ModernBackground style={styles.container}>
         <View style={styles.errorCard}>
           <Text style={styles.errorTitle}>Erreur Agora</Text>
           <Text style={styles.errorText}>Impossible d'obtenir un token.</Text>
           <Text style={styles.errorText}>Vérifie le serveur token et la configuration.</Text>
         </View>
-      </ImageBackground>
+      </ModernBackground>
     );
   }
 

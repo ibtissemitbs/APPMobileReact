@@ -4,33 +4,38 @@
     "slug": "IbtissemMoussaWhatsApp",
     "version": "1.0.0",
     "orientation": "portrait",
+    "plugins": ["expo-dev-client"],
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0F2E31"
     },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "We need camera access for video calls and recordings.",
         "NSMicrophoneUsageDescription": "We need microphone access for voice calls and recordings.",
-        "NSPhotoLibraryUsageDescription": "We need photo library access to share media."
+        "NSPhotoLibraryUsageDescription": "We need photo library access to share media.",
+        "NSLocationWhenInUseUsageDescription": "We need location access to share your live position in chat."
       }
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0F2E31"
       },
       "edgeToEdgeEnabled": true
     },

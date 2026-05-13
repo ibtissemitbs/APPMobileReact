@@ -4,35 +4,46 @@ import * as Audio from "expo-av/build/Audio";
 import * as DocumentPicker from "expo-document-picker";
 import {
   Alert,
+  Animated,
   FlatList,
   Image,
-  ImageBackground,
+  KeyboardAvoidingView,
   Linking,
+  LayoutAnimation,
   Modal,
+  Platform,
   Share,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  UIManager,
   View,
 } from "react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import firebase from "../Config";
 import { supabase } from "../Config";
 import IconButton from "../components/ui/IconButton";
-import EmojiSelector from "react-native-emoji-selector";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAppSettings } from "../Config/appSettings";
+import ModernBackground from "../components/ui/ModernBackground";
+import EmojiPickerModal from "../components/ui/EmojiPickerModal";
 
 const database = firebase.database();
 const ref_all_messages = database.ref("allMessages");
 const ref_all_accounts = database.ref("allaccounts");
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export default function Chat(props) {
   const currentid = props.route?.params?.currentid;
   const secondid = props.route?.params?.secondid;
   const { theme, t } = useAppSettings();
   const styles = getStyles(theme);
+  const screenProgress = useRef(new Animated.Value(0)).current;
+  const sendScale = useRef(new Animated.Value(1)).current;
 
   const [data, setdata] = useState([]);
   const [secondistyping, setSecondIsTyping] = useState(false);
@@ -43,21 +54,23 @@ export default function Chat(props) {
 
   const [message, setMessage] = useState("");
   const [recording, setRecording] = useState(null);
-  const [recherche, setrecherche] = useState("");
-  const [filtre, setfiltre] = useState("Tous");
-  const [showFiltre, setshowFiltre] = useState(false);
 
   const [selectedMessage, setselectedMessage] = useState(null);
   const [replyTo, setreplyTo] = useState(null);
   const [editMessageKey, seteditMessageKey] = useState(null);
   const [secondAccount, setSecondAccount] = useState(null);
   const [contactPhotoModalVisible, setcontactPhotoModalVisible] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [editContactModalVisible, seteditContactModalVisible] = useState(false);
+  const [contactAliasInput, setcontactAliasInput] = useState("");
+  const [contactAlias, setcontactAlias] = useState("");
+  const [isContactBlocked, setisContactBlocked] = useState(false);
 
   if (!currentid || !secondid) {
     return (
-      <ImageBackground style={styles.container} source={require("../assets/backgr.jpg")}>
+      <ModernBackground style={styles.container}>
         <Text>Parametres du chat manquants</Text>
-      </ImageBackground>
+      </ModernBackground>
     );
   }
 
@@ -70,14 +83,32 @@ export default function Chat(props) {
   const ref_second_istyping = ref_typing.child(String(secondid));
 
   useEffect(() => {
+    Animated.timing(screenProgress, {
+      toValue: 1,
+      duration: 280,
+      useNativeDriver: true,
+    }).start();
+  }, [screenProgress]);
+
+  useEffect(() => {
     ref_chat.on("value", (snapshot) => {
       var d = [];
+      const updates = {};
       snapshot.forEach((one_message) => {
+        const messageValue = one_message.val() || {};
+        if (messageValue.idreceiver == currentid && messageValue.seen !== true) {
+          updates[`allMessages/${iddiscussion}/chat/${one_message.key}/seen`] = true;
+          updates[`allMessages/${iddiscussion}/chat/${one_message.key}/seenAt`] = new Date().toLocaleTimeString();
+        }
         d.push({
           key: one_message.key,
-          ...one_message.val(),
+          ...messageValue,
         });
       });
+      if (Object.keys(updates).length > 0) {
+        database.ref().update(updates);
+      }
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setdata(d);
     });
 
@@ -102,6 +133,20 @@ export default function Chat(props) {
     return () => ref_second.off("value", onValue);
   }, [secondid]);
 
+  useEffect(() => {
+    if (!currentid || !secondid) return;
+    const ref_me = ref_all_accounts.child(String(currentid));
+    const onValue = (snapshot) => {
+      const me = snapshot.val() || {};
+      const alias = me?.contactAliases?.[String(secondid)] || "";
+      const blocked = me?.blockedContacts?.[String(secondid)] === true;
+      setcontactAlias(alias);
+      setisContactBlocked(blocked);
+    };
+    ref_me.on("value", onValue);
+    return () => ref_me.off("value", onValue);
+  }, [currentid, secondid]);
+
   const openPhoneCall = () => {
     const numero = secondAccount?.Numero || secondAccount?.numero;
     if (!numero) {
@@ -111,7 +156,19 @@ export default function Chat(props) {
     Linking.openURL(`tel:${numero}`);
   };
 
+  const openVideoCall = () => {
+    props.navigation.navigate("Call", {
+      channelName: String(iddiscussion),
+      isVideo: true,
+    });
+  };
+
   const sendMessage = (msg, type, extra = {}) => {
+    if (isContactBlocked) {
+      Alert.alert("Contact bloque", "Debloquez ce contact pour envoyer des messages.");
+      return;
+    }
+
     const Key = ref_chat.push().key;
     const ref_message = ref_chat.child(Key);
 
@@ -122,6 +179,8 @@ export default function Chat(props) {
       time: new Date().toLocaleTimeString(),
       type: type,
       edited: false,
+      seen: false,
+      seenAt: null,
       replyTo: extra.replyTo ? extra.replyTo : null,
     });
   };
@@ -137,6 +196,58 @@ export default function Chat(props) {
         style: "destructive",
         onPress: () => {
           ref_chat.remove();
+        },
+      },
+    ]);
+  };
+
+  const saveContactAlias = () => {
+    const alias = contactAliasInput.trim();
+    ref_all_accounts
+      .child(String(currentid))
+      .child("contactAliases")
+      .child(String(secondid))
+      .set(alias || null)
+      .then(() => {
+        setcontactAlias(alias);
+        seteditContactModalVisible(false);
+        Alert.alert("Succes", "Alias du contact enregistre.");
+      })
+      .catch((err) => {
+        Alert.alert("Erreur", "Impossible d'enregistrer l'alias: " + err.message);
+      });
+  };
+
+  const toggleBlockContact = () => {
+    const nextBlocked = !isContactBlocked;
+    ref_all_accounts
+      .child(String(currentid))
+      .child("blockedContacts")
+      .child(String(secondid))
+      .set(nextBlocked ? true : null)
+      .then(() => {
+        Alert.alert("Succes", nextBlocked ? "Contact bloque." : "Contact debloque.");
+      });
+  };
+
+  const deleteContactFromMyList = () => {
+    Alert.alert("Supprimer le contact", "Supprimer ce contact de votre liste locale ?", [
+      { text: "Annuler", style: "cancel" },
+      {
+        text: "Supprimer",
+        style: "destructive",
+        onPress: () => {
+          database
+            .ref()
+            .update({
+              [`allaccounts/${currentid}/contactAliases/${secondid}`]: null,
+              [`allaccounts/${currentid}/blockedContacts/${secondid}`]: null,
+              [`allMessages/${iddiscussion}`]: null,
+            })
+            .then(() => {
+              setcontactPhotoModalVisible(false);
+              props.navigation.goBack();
+            });
         },
       },
     ]);
@@ -211,6 +322,29 @@ export default function Chat(props) {
       ref_star.remove();
     } else {
       ref_star.set(true);
+    }
+
+    setisActionVisible(false);
+  };
+
+  const isMessagePinnedByMe = (item) => {
+    return item.pinnedBy && item.pinnedBy[currentid] === true;
+  };
+
+  const togglePin = () => {
+    if (!selectedMessage) {
+      return;
+    }
+
+    const ref_pin = ref_chat
+      .child(selectedMessage.key)
+      .child("pinnedBy")
+      .child(String(currentid));
+
+    if (isMessagePinnedByMe(selectedMessage)) {
+      ref_pin.remove();
+    } else {
+      ref_pin.set(true);
     }
 
     setisActionVisible(false);
@@ -367,9 +501,17 @@ export default function Chat(props) {
     });
 
     if (!result.canceled) {
-      const localUri = result.assets[0].uri;
-      const link = await uploadImageToSupabase(localUri);
-      sendMessage(link, "image");
+      const asset = result.assets[0];
+      const localUri = asset.uri;
+      const isVideo = asset.type === "video" || localUri.toLowerCase().endsWith(".mp4");
+      if (isVideo) {
+        const filename = Date.now() + ".mp4";
+        const link = await uploadFileToSupabase(localUri, filename, "video/mp4");
+        sendMessage(link, "video");
+      } else {
+        const link = await uploadImageToSupabase(localUri);
+        sendMessage(link, "image");
+      }
       setisMediaModalVisible(false);
     }
   };
@@ -440,7 +582,17 @@ export default function Chat(props) {
     const permissionResult = await Location.requestForegroundPermissionsAsync();
 
     if (!permissionResult.granted) {
-      Alert.alert("Permission required", "Permission to access location is required.");
+      Alert.alert(
+        "Permission GPS requise",
+        "Active la localisation dans les réglages pour envoyer ta position.",
+        [
+          { text: "Annuler", style: "cancel" },
+          {
+            text: "Ouvrir les réglages",
+            onPress: () => Linking.openSettings(),
+          },
+        ]
+      );
       return;
     }
 
@@ -558,31 +710,51 @@ export default function Chat(props) {
     ref_me_istyping.set(false);
   };
 
-  const data_filtre = data.filter((item) => {
-    var texte = recherche.toLowerCase();
-    var type = item.type ? item.type : "text";
-    var messageText = item.message ? item.message.toString().toLowerCase() : "";
-    var hasTextMatch =
-      messageText.includes(texte) || type.toLowerCase().includes(texte);
+  const animateAndSendTextMessage = () => {
+    Animated.sequence([
+      Animated.timing(sendScale, {
+        toValue: 0.88,
+        duration: 70,
+        useNativeDriver: true,
+      }),
+      Animated.spring(sendScale, {
+        toValue: 1,
+        friction: 4,
+        tension: 130,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    sendTextMessage();
+  };
 
-    if (filtre == "map" && type == "location") {
-      return hasTextMatch;
-    }
-
-    if (filtre == "star") {
-      return isMessageStarredByMe(item) && hasTextMatch;
-    }
-
-    if (filtre != "Tous" && type != filtre) {
-      return false;
-    }
-
-    return hasTextMatch;
-  });
+  const messagesData = data;
+  const pinnedMessages = data.filter((item) => isMessagePinnedByMe(item));
+  const contactName = contactAlias || secondAccount?.Pseudo || secondAccount?.Nom || secondAccount?.Numero || "Contact";
+  const contactInitial = (contactName || "C").charAt(0).toUpperCase();
 
   return (
-    <ImageBackground style={styles.container} source={require("../assets/backgr.jpg")}>
-      <View style={styles.headerWrap}>
+    <ModernBackground style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.keyboardRoot}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+      >
+      <Animated.View
+        style={[
+          styles.headerWrap,
+          {
+            opacity: screenProgress,
+            transform: [
+              {
+                translateY: screenProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-18, 0],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
         <View style={styles.headerTopRow}>
           <TouchableOpacity
             onPress={() => {
@@ -593,10 +765,9 @@ export default function Chat(props) {
             <Text style={styles.iconCircleText}>←</Text>
           </TouchableOpacity>
 
-          <View style={styles.headerCenter}>
-            <TouchableOpacity
-              style={styles.avatarBadge}
-              onPress={() => setcontactPhotoModalVisible(true)}
+          <TouchableOpacity style={styles.headerCenter} onPress={() => setcontactPhotoModalVisible(true)}>
+            <View
+              style={[styles.avatarBadge, secondistyping === true ? styles.avatarBadgeOnline : styles.avatarBadgeIdle]}
             >
               {secondAccount?.UrlImage ? (
                 <Image 
@@ -604,21 +775,22 @@ export default function Chat(props) {
                   style={{ width: 40, height: 40, borderRadius: 20 }}
                 />
               ) : (
-                <Text style={styles.avatarText}>{secondAccount?.Pseudo ? secondAccount.Pseudo.charAt(0).toUpperCase() : "U"}</Text>
+                <Text style={styles.avatarText}>{contactInitial}</Text>
               )}
-            </TouchableOpacity>
+              <View style={[styles.headerPresenceDot, secondistyping === true ? styles.headerPresenceOnline : styles.headerPresenceIdle]} />
+            </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.headerTitle}>Discussion</Text>
+              <Text numberOfLines={1} style={styles.headerTitle}>{contactName}</Text>
               <Text style={styles.headerSubTitle}>
                 {secondistyping === true ? "en train d'ecrire..." : "Actif"}
               </Text>
             </View>
-          </View>
+          </TouchableOpacity>
 
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={styles.iconCircle}
-              onPress={openPhoneCall}
+              onPress={openVideoCall}
             >
               <Ionicons name="videocam" size={18} color="#fff" />
             </TouchableOpacity>
@@ -631,53 +803,25 @@ export default function Chat(props) {
           </View>
         </View>
 
-        <View style={styles.searchZone}>
-          <TextInput
-            placeholder={t("searchMedia")}
-            value={recherche}
-            onChangeText={(txt) => {
-              setrecherche(txt);
-            }}
-            style={styles.searchInput}
-          ></TextInput>
-          <TouchableOpacity
-            onPress={() => {
-              setshowFiltre(!showFiltre);
-            }}
-            style={styles.filterButton}
-          >
-            <MaterialCommunityIcons name="tune" size={20} color={theme.colors.primary} />
-          </TouchableOpacity>
+      </Animated.View>
 
-          {showFiltre && (
-            <View style={styles.filterList}>
-              {["Tous", "text", "image", "audio", "map", "star"].map((item) => {
-                const isActive = filtre === item;
-                return (
-                  <TouchableOpacity
-                    key={item}
-                    onPress={() => {
-                      setfiltre(item);
-                      setshowFiltre(false);
-                    }}
-                    style={[styles.filterListItem, isActive && styles.filterListItemActive]}
-                  >
-                    <Text style={[styles.filterListItemText, isActive && styles.filterListItemTextActive]}>
-                      {item === "Tous" ? "📋 Tous" : item === "text" ? "💬 Texte" : item === "image" ? "🖼️ Images" : item === "audio" ? "🔊 Audio" : item === "map" ? "📍 Localisation" : item === "star" ? "⭐ Favoris" : item}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-        </View>
-      </View>
+      {pinnedMessages.length > 0 && (
+        <TouchableOpacity
+          style={styles.pinnedBar}
+        >
+          <MaterialCommunityIcons name="pin" size={16} color={theme.colors.primary} />
+          <Text numberOfLines={1} style={styles.pinnedBarText}>
+            {pinnedMessages.length} message(s) epingle(s)
+          </Text>
+        </TouchableOpacity>
+      )}
 
       <FlatList
-        data={data_filtre}
+        data={messagesData}
         keyExtractor={(item) => item.key}
-        style={{ width: "95%" }}
+        style={styles.messagesList}
         contentContainerStyle={{ paddingVertical: 8 }}
+        keyboardShouldPersistTaps="handled"
         renderItem={({ item }) => {
           var messageIsImage =
             item.type == "image" ||
@@ -686,6 +830,8 @@ export default function Chat(props) {
                 item.message.startsWith("blob:") ||
                 item.message.startsWith("data:")));
           var starsCount = getStarsCount(item);
+          var isPinned = isMessagePinnedByMe(item);
+          var isMine = currentid == item.idsender;
 
           return (
             <TouchableOpacity
@@ -695,8 +841,15 @@ export default function Chat(props) {
               onLongPress={() => {
                 openActions(item);
               }}
-              style={currentid == item.idsender ? styles.myMessage : styles.hisMessage}
+              style={isMine ? styles.myMessage : styles.hisMessage}
             >
+              {isPinned && (
+                <View style={styles.pinnedBadge}>
+                  <MaterialCommunityIcons name="pin" size={12} color={theme.colors.primary} />
+                  <Text style={styles.pinnedBadgeText}>Epingle</Text>
+                </View>
+              )}
+
               {item.replyTo && (
                 <View style={styles.replyPreviewBubble}>
                   <Text style={styles.replyPreviewLabel}>Reponse</Text>
@@ -747,12 +900,13 @@ export default function Chat(props) {
               ) : messageIsImage ? (
                 <Image source={{ uri: item.message }} resizeMode="cover" style={styles.imageMessage} />
               ) : (
-                <Text style={styles.messageText}>{item.message}</Text>
+                <Text style={[styles.messageText, !isMine && styles.messageTextOther]}>{item.message}</Text>
               )}
 
               <View style={styles.messageMetaRow}>
-                <Text style={styles.messageTime}>
+                <Text style={[styles.messageTime, !isMine && styles.messageTimeOther]}>
                   {item.time}
+                  {isMine ? (item.seen ? "  ✔✔ Vu" : "  ✔ Envoye") : ""}
                   {item.edited ? " • modifie" : ""}
                 </Text>
                 {starsCount > 0 && <Text style={styles.starCount}>⭐ {starsCount}</Text>}
@@ -843,9 +997,11 @@ export default function Chat(props) {
           </TouchableOpacity>
 
           {message.trim().length > 0 ? (
-            <TouchableOpacity onPress={sendTextMessage} style={styles.sendBtn}>
+            <Animated.View style={{ transform: [{ scale: sendScale }] }}>
+            <TouchableOpacity onPress={animateAndSendTextMessage} style={styles.sendBtn}>
               <MaterialCommunityIcons name="send" size={18} color="#fff" />
             </TouchableOpacity>
+            </Animated.View>
           ) : (
             <TouchableOpacity
               onPress={() => {
@@ -950,6 +1106,11 @@ export default function Chat(props) {
             <TouchableOpacity style={styles.modalButton} onPress={toggleStar}>
               <Text style={styles.modalText}>Favori</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.modalButton} onPress={togglePin}>
+              <Text style={styles.modalText}>
+                {selectedMessage && isMessagePinnedByMe(selectedMessage) ? "Retirer epingle" : "Epingler"}
+              </Text>
+            </TouchableOpacity>
             {selectedMessage &&
               selectedMessage.idsender == currentid &&
               selectedMessage.type == "text" && (
@@ -994,15 +1155,79 @@ export default function Chat(props) {
                 style={styles.largeContactPhoto}
               />
             ) : (
-              <View style={[styles.largeContactPhoto, { backgroundColor: "#27a89f", alignItems: "center", justifyContent: "center" }]}>
-                <Text style={{ fontSize: 80, color: "#fff" }}>
-                  {secondAccount?.Pseudo ? secondAccount.Pseudo.charAt(0).toUpperCase() : "U"}
-                </Text>
+              <View style={[styles.largeContactPhoto, { backgroundColor: theme.colors.primary, alignItems: "center", justifyContent: "center" }]}>
+                <Text style={{ fontSize: 80, color: "#fff" }}>{contactInitial}</Text>
               </View>
             )}
-            <Text style={styles.contactPhotoName}>{secondAccount?.Pseudo || secondAccount?.Nom || "User"}</Text>
+            <Text style={styles.contactPhotoName}>{contactName}</Text>
             <Text style={styles.contactPhotoEmail}>{secondAccount?.Email || secondAccount?.Numero}</Text>
-            
+            <View style={styles.contactQuickActions}>
+              <TouchableOpacity style={styles.contactQuickAction} onPress={() => Alert.alert("Profil", contactName)}>
+                <View style={styles.contactActionIcon}>
+                  <Ionicons name="person-circle" size={24} color={theme.colors.primary} />
+                </View>
+                <Text style={styles.contactActionText}>Profil</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.contactQuickAction} onPress={() => setIsMuted(!isMuted)}>
+                <View style={styles.contactActionIcon}>
+                  <Ionicons name={isMuted ? "notifications" : "notifications-off"} size={22} color={theme.colors.primary} />
+                </View>
+                <Text style={styles.contactActionText}>{isMuted ? "Unmute" : "Mute"}</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.contactSection}>
+              <Text style={styles.contactSectionTitle}>Actions</Text>
+              <TouchableOpacity
+                style={styles.contactRow}
+                onPress={() => {
+                  setcontactPhotoModalVisible(false);
+                  props.navigation.navigate('ListAccount', {
+                    userid: currentid,
+                    userId: currentid,
+                    mode: 'createGroup',
+                    preselect: [String(secondid)],
+                  });
+                }}
+              >
+                <MaterialCommunityIcons name="account-group" size={22} color={theme.colors.primary} />
+                <Text style={styles.contactRowText}>Creer un groupe avec {contactName}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.contactRow}
+                onPress={() => {
+                  setcontactPhotoModalVisible(false);
+                  const discussionId = iddiscussion;
+                  props.navigation.navigate('MediaGallery', { mode: 'private', id: discussionId });
+                }}
+              >
+                <MaterialCommunityIcons name="image-multiple" size={22} color={theme.colors.primary} />
+                <Text style={styles.contactRowText}>Voir media, fichiers et liens</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.contactRow}
+                onPress={() => {
+                  setcontactAliasInput(contactAlias || secondAccount?.Pseudo || "");
+                  seteditContactModalVisible(true);
+                }}
+              >
+                <MaterialCommunityIcons name="account-edit" size={22} color={theme.colors.primary} />
+                <Text style={styles.contactRowText}>Modifier contact</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.contactRow}
+                onPress={toggleBlockContact}
+              >
+                <MaterialCommunityIcons name={isContactBlocked ? "lock-open-variant" : "lock-outline"} size={22} color={theme.colors.primary} />
+                <Text style={styles.contactRowText}>{isContactBlocked ? "Debloquer contact" : "Bloquer contact"}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.contactRow, styles.contactRowDanger]}
+                onPress={deleteContactFromMyList}
+              >
+                <MaterialCommunityIcons name="trash-can-outline" size={22} color={theme.colors.danger} />
+                <Text style={[styles.contactRowText, styles.contactRowDangerText]}>Supprimer contact</Text>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity 
               style={styles.closeContactPhotoBtn}
               onPress={() => setcontactPhotoModalVisible(false)}
@@ -1018,32 +1243,50 @@ export default function Chat(props) {
       </Modal>
 
       <Modal
-        visible={isEmojiVisible}
+        visible={editContactModalVisible}
         transparent
-        animationType="slide"
-        onRequestClose={() => setisEmojiVisible(false)}
+        animationType="fade"
+        onRequestClose={() => seteditContactModalVisible(false)}
       >
-        <View style={styles.emojiOverlay}>
-          <View style={styles.emojiCard}>
-            <View style={styles.emojiHeader}>
-              <Text style={styles.emojiTitle}>Emojis</Text>
-              <TouchableOpacity onPress={() => setisEmojiVisible(false)}>
-                <Text style={styles.emojiClose}>Fermer</Text>
+        <View style={styles.modalOverlayEditContact}>
+          <View style={styles.modalCardEditContact}>
+            <Text style={styles.modalTitleEditContact}>Modifier contact</Text>
+            <TextInput
+              style={styles.editContactInput}
+              value={contactAliasInput}
+              onChangeText={setcontactAliasInput}
+              placeholder="Nom du contact"
+              placeholderTextColor={theme.colors.subtext}
+            />
+            <View style={styles.editContactActions}>
+              <TouchableOpacity
+                style={[styles.editContactBtn, styles.editContactBtnCancel]}
+                onPress={() => seteditContactModalVisible(false)}
+              >
+                <Text style={styles.editContactBtnCancelText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.editContactBtn, styles.editContactBtnSave]}
+                onPress={saveContactAlias}
+              >
+                <Text style={styles.editContactBtnSaveText}>Enregistrer</Text>
               </TouchableOpacity>
             </View>
-            <EmojiSelector
-              onEmojiSelected={(emoji) => {
-                setMessage(message + emoji);
-                setisEmojiVisible(false);
-              }}
-              showSearchBar={false}
-              columns={8}
-              category={"all"}
-            />
           </View>
         </View>
       </Modal>
-    </ImageBackground>
+
+      <EmojiPickerModal
+        visible={isEmojiVisible}
+        theme={theme}
+        onClose={() => setisEmojiVisible(false)}
+        onSelect={(emoji) => {
+          setMessage((prev) => prev + emoji);
+          setisEmojiVisible(false);
+        }}
+      />
+      </KeyboardAvoidingView>
+    </ModernBackground>
   );
 }
 
@@ -1053,14 +1296,26 @@ const getStyles = (theme) => StyleSheet.create({
     alignItems: "center",
     backgroundColor: theme.colors.background,
   },
-  headerWrap: {
+  keyboardRoot: {
+    flex: 1,
     width: "100%",
+    alignItems: "center",
+  },
+  messagesList: {
+    width: "95%",
+    flex: 1,
+  },
+  headerWrap: {
+    width: "95%",
     paddingTop: 30,
-    backgroundColor: theme.colors.primaryDark,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    backgroundColor: theme.colors.glass,
+    borderRadius: 28,
     overflow: "hidden",
-    marginBottom: 6,
+    marginTop: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.52)",
+    ...theme.elevation.mid,
   },
   headerTopRow: {
     flexDirection: "row",
@@ -1090,76 +1345,72 @@ const getStyles = (theme) => StyleSheet.create({
     borderWidth: 1,
     borderColor: "#fff6",
   },
+  avatarBadgeOnline: {
+    borderColor: theme.colors.success,
+  },
+  avatarBadgeIdle: {
+    borderColor: "#ffffff66",
+  },
+  headerPresenceDot: {
+    position: "absolute",
+    right: -1,
+    bottom: -1,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: theme.colors.primaryDark,
+  },
+  headerPresenceOnline: {
+    backgroundColor: theme.colors.success,
+  },
+  headerPresenceIdle: {
+    backgroundColor: "#A7B4B7",
+  },
   avatarText: {
     color: "#fff",
     fontWeight: "700",
   },
   headerTitle: {
-    color: "#fff",
+    color: theme.colors.text,
     fontSize: 18,
     fontWeight: "800",
   },
   headerSubTitle: {
-    color: "#ecf6f1",
+    color: theme.colors.subtext,
     fontSize: 11,
   },
   iconCircle: {
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: "#ffffff22",
+    backgroundColor: theme.colors.primary,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#ffffff33",
+    borderColor: "rgba(255,255,255,0.22)",
   },
   iconCircleText: {
     color: "#fff",
     fontWeight: "700",
     fontSize: 14,
   },
-  searchZone: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  searchInput: {
-    backgroundColor: "#ffffff22",
-    height: 44,
+  pinnedBar: {
+    width: "95%",
+    backgroundColor: "#ffffffee",
     borderRadius: 16,
-    paddingHorizontal: 14,
-    marginBottom: 8,
-    color: "#fff",
-  },
-  filterButton: {
-    backgroundColor: "#ffffff22",
-    height: 36,
-    justifyContent: "center",
     paddingHorizontal: 12,
-    borderRadius: 12,
+    paddingVertical: 10,
+    marginBottom: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
-  filterButtonText: {
-    fontWeight: "700",
-    color: "#fff",
-  },
-  filterList: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    marginTop: 4,
-  },
-  filterListItem: {
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  filterListItemActive: {
-    backgroundColor: theme.colors.primary + "20",
-  },
-  filterListItemText: {
-    color: "#333",
-    fontSize: 14,
-  },
-  filterListItemTextActive: {
-    color: theme.colors.primary,
+  pinnedBarText: {
+    flex: 1,
+    color: theme.colors.text,
     fontWeight: "700",
   },
   modalContainer: {
@@ -1188,20 +1439,40 @@ const getStyles = (theme) => StyleSheet.create({
   myMessage: {
     backgroundColor: theme.colors.primary,
     marginVertical: 4,
-    padding: 12,
-    borderRadius: 18,
+    padding: 13,
+    borderRadius: 22,
     alignSelf: "flex-end",
     maxWidth: "82%",
+    borderTopRightRadius: 8,
+    ...theme.elevation.low,
   },
   hisMessage: {
-    backgroundColor: "#ffffffef",
+    backgroundColor: theme.colors.surface,
     marginVertical: 4,
-    padding: 12,
-    borderRadius: 18,
+    padding: 13,
+    borderRadius: 22,
     alignSelf: "flex-start",
     maxWidth: "82%",
     borderWidth: 1,
-    borderColor: "#fff7",
+    borderColor: theme.colors.border,
+    borderTopLeftRadius: 8,
+    ...theme.elevation.low,
+  },
+  pinnedBadge: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#ffffffdd",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginBottom: 6,
+  },
+  pinnedBadgeText: {
+    color: theme.colors.primary,
+    fontSize: 10,
+    fontWeight: "800",
   },
   replyPreviewBubble: {
     backgroundColor: "#00000010",
@@ -1224,6 +1495,10 @@ const getStyles = (theme) => StyleSheet.create({
   messageText: {
     color: "#fff",
     fontSize: 15,
+    lineHeight: 21,
+  },
+  messageTextOther: {
+    color: theme.colors.text,
   },
   messageMetaRow: {
     marginTop: 4,
@@ -1234,6 +1509,9 @@ const getStyles = (theme) => StyleSheet.create({
   messageTime: {
     color: "#dff3f2",
     fontSize: 11,
+  },
+  messageTimeOther: {
+    color: theme.colors.subtext,
   },
   starCount: {
     fontSize: 11,
@@ -1293,7 +1571,7 @@ const getStyles = (theme) => StyleSheet.create({
   },
   composerInner: {
     width: "100%",
-    backgroundColor: "#ffffffee",
+    backgroundColor: theme.colors.surface,
     borderRadius: 28,
     flexDirection: "row",
     alignItems: "center",
@@ -1302,6 +1580,7 @@ const getStyles = (theme) => StyleSheet.create({
     paddingVertical: 6,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    ...theme.elevation.mid,
   },
   composerIcon: {
     width: 38,
@@ -1364,23 +1643,25 @@ const getStyles = (theme) => StyleSheet.create({
   },
   contactPhotoOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    backgroundColor: "rgba(0, 0, 0, 0.72)",
     justifyContent: "center",
     alignItems: "center",
   },
   contactPhotoCard: {
-    backgroundColor: "#fff",
-    borderRadius: 24,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 28,
     padding: 20,
-    width: "85%",
+    width: "90%",
     maxWidth: 500,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   largeContactPhoto: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    marginBottom: 20,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    marginBottom: 14,
   },
   contactPhotoName: {
     fontSize: 22,
@@ -1391,7 +1672,59 @@ const getStyles = (theme) => StyleSheet.create({
   contactPhotoEmail: {
     fontSize: 14,
     color: theme.colors.subtext,
-    marginBottom: 20,
+    marginBottom: 14,
+  },
+  contactQuickActions: {
+    flexDirection: "row",
+    gap: 28,
+    marginVertical: 12,
+  },
+  contactQuickAction: {
+    alignItems: "center",
+    gap: 6,
+  },
+  contactActionIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: theme.colors.muted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  contactActionText: {
+    color: theme.colors.text,
+    fontWeight: "700",
+  },
+  contactSection: {
+    width: "100%",
+    marginTop: 10,
+  },
+  contactSectionTitle: {
+    color: theme.colors.subtext,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  contactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    backgroundColor: theme.colors.muted,
+    borderRadius: 16,
+    marginBottom: 8,
+  },
+  contactRowText: {
+    flex: 1,
+    color: theme.colors.text,
+    fontWeight: "700",
+  },
+  contactRowDanger: {
+    borderWidth: 1,
+    borderColor: theme.colors.danger + "55",
+  },
+  contactRowDangerText: {
+    color: theme.colors.danger,
   },
   closeContactPhotoBtn: {
     paddingVertical: 12,
@@ -1401,5 +1734,61 @@ const getStyles = (theme) => StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: "700",
     fontSize: 16,
+  },
+  modalOverlayEditContact: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  modalCardEditContact: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  modalTitleEditContact: {
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 12,
+  },
+  editContactInput: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 12,
+    backgroundColor: theme.colors.muted,
+    color: theme.colors.text,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  editContactActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 14,
+  },
+  editContactBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  editContactBtnCancel: {
+    backgroundColor: theme.colors.muted,
+  },
+  editContactBtnSave: {
+    backgroundColor: theme.colors.primary,
+  },
+  editContactBtnCancelText: {
+    color: theme.colors.subtext,
+    fontWeight: "700",
+  },
+  editContactBtnSaveText: {
+    color: "#fff",
+    fontWeight: "700",
   },
 });
